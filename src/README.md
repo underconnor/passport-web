@@ -1,14 +1,9 @@
-# 예정 소스 경계
+# 소스 구성
 
-아직 실행 소스는 없습니다. 부트스트랩 시 다음 경계로 구성합니다.
+- `main.tsx`: React 진입점
+- `App.tsx`: 실제 API 응답에 기반한 화면과 상호작용
+- `api.ts`: 같은 출처의 API 호출, 오류 처리와 최소 타입
+- `ui.tsx`: 로그인 브랜드, 개발 표시와 공통 앱 레이아웃
+- `styles.css`: 반응형 화면 스타일
 
-| 모듈 | 책임 |
-| --- | --- |
-| `app` | 라우팅, 공통 화면, 세션 초기화 |
-| `features/link` | Minecraft 연결 요청, 학교 인증 진입, 게임 확인 대기 |
-| `features/profile` | 회원 정보와 Discord ID 직접 입력 |
-| `features/access` | 서버별 접근 상태 표시 |
-| `shared/api` | 세션 기반 API 클라이언트, CSRF, 오류 변환 |
-| `shared/ui` | 재사용 UI와 접근성 |
-
-API 모델은 `passport-contracts`의 특정 버전 배포본을 사용합니다. 인접 저장소 소스에 대한 상대 경로 import나 학적 파서 구현은 포함하지 않습니다.
+학교 자격 증명이나 API 서비스 비밀값은 브라우저 코드에 포함하지 않습니다.
