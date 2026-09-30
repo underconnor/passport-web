@@ -11,6 +11,7 @@
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit && npm test",
     "test": "node --experimental-strip-types --test test/auth.test.mjs",
+    "test:browser-session": "npm run build && node --test test/session-expiry.browser.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

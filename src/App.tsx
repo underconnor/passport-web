@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { api, errorMessage, validDiscordId } from "./api";
+import { api, ApiError, errorMessage, validDiscordId } from "./api";
 import type { AuthSession, LinkSession, Profile, Server, UniversityStart } from "./api";
 import { accountAccess, schoolLoginDestination, universityCallbackError } from "./auth";
 import { invalidLinkPath, linkReference, universityAuthError } from "./link";
@@ -102,6 +102,21 @@ export function App() {
     try {
       await action();
     } catch (failure) {
+      if (failure instanceof ApiError && failure.status === 401) {
+        setProfile(null);
+        setServers([]);
+        setDiscordId("");
+        setLink(null);
+        setLinkError("");
+        setSession(null);
+        setView("dashboard");
+        try {
+          await refresh();
+        } catch (recoveryFailure) {
+          setError(errorMessage(recoveryFailure));
+          return;
+        }
+      }
       setError(errorMessage(failure));
     } finally {
       setBusy("");
