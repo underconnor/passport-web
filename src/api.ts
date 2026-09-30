@@ -1,14 +1,20 @@
 export interface AuthSession {
   authenticated: boolean;
   csrfToken: string;
-  authMode: "development" | "university-disabled";
+  authMode: "development" | "university-disabled" | "university";
 }
 export interface Profile {
   id: string;
   displayName: string;
-  identityProvider: "development";
+  identityProvider: "development" | "usaint";
+  department: string | null;
+  academicStatus: string | null;
+  universityVerifiedAt: string | null;
+  universityVerifiedUntil: string | null;
+  accessSuspended: boolean;
   membership: {
-    status: "active" | "inactive";
+    status: "active" | "inactive" | "suspended";
+    effectiveStatus?: "active" | "revoked" | "stale" | "suspended";
     roleLabel: string;
     verifiedUntil: string | null;
   };
@@ -32,6 +38,10 @@ export interface LinkSession {
 export interface Server {
   id: string;
   label: string;
+}
+export interface UniversityStart {
+  url: string;
+  expiresIn: number;
 }
 
 const messages: Record<string, string> = {
@@ -66,6 +76,13 @@ const messages: Record<string, string> = {
     "이 환경에서는 개발용 로그인을 사용할 수 없습니다.",
   invalid_discord_id: "올바른 숫자 Discord 사용자 ID를 입력해 주세요.",
   too_many_requests: "요청이 많습니다. 잠시 후 다시 시도해 주세요.",
+  university_provider_not_configured:
+    "학교 로그인을 잠시 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+  university_verification_expired:
+    "학교 인증이 만료되었습니다. 학교 계정으로 다시 로그인해 주세요.",
+  membership_expired:
+    "회원 명부를 갱신하고 있습니다. 잠시 후 다시 확인해 주세요.",
+  access_suspended: "서버 이용이 정지되어 있습니다. 소모임 운영자에게 문의해 주세요.",
 };
 
 export class ApiError extends Error {

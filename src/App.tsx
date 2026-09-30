@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api, errorMessage, validDiscordId } from "./api";
-import type { AuthSession, LinkSession, Profile, Server } from "./api";
-import { invalidLinkPath, linkReference } from "./link";
+import type { AuthSession, LinkSession, Profile, Server, UniversityStart } from "./api";
+import { accountAccess, schoolLoginDestination, universityCallbackError } from "./auth";
+import { invalidLinkPath, linkReference, universityAuthError } from "./link";
 import { AppShell, Brand, DevelopmentStrip, Icon } from "./ui";
 import type { IconName } from "./ui";
 type View = "dashboard" | "minecraft" | "discord" | "servers";
@@ -33,6 +34,7 @@ export function App() {
   const [link, setLink] = useState<LinkSession | null>(null);
   const [linkError, setLinkError] = useState("");
   const [error, setError] = useState("");
+  const [authError, setAuthError] = useState(() => universityCallbackError(universityAuthError));
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [loading, setLoading] = useState(true);
@@ -108,7 +110,8 @@ export function App() {
 
   const csrfToken = profile?.csrfToken ?? session?.csrfToken;
   const signedIn = profile !== null;
-  const active = profile?.membership.status === "active";
+  const access = profile ? accountAccess(profile) : null;
+  const active = access?.canAccess ?? false;
   const hasLink = linkReference !== null || invalidLinkPath;
   const missingToken = hasLink && !linkReference?.token;
   const linkExpired = link
@@ -137,8 +140,30 @@ export function App() {
   }
 
   const development = session?.authMode === "development";
+  const universityEnabled = session?.authMode === "university";
+  const schoolLogin = () =>
+    void perform("university", async () => {
+      setAuthError("");
+      const result = await api<UniversityStart>("/auth/university/start", {
+        method: "POST",
+        body: linkReference?.token && !linkError && !linkExpired
+          ? { link: { id: linkReference.id, token: linkReference.token } }
+          : {},
+        csrfToken,
+      });
+      window.location.assign(schoolLoginDestination(result.url));
+    });
   const alerts = (
     <>
+      {authError ? (
+        <div className="notice notice-error" role="alert">
+          <div>
+            <strong>학교 로그인을 확인해 주세요</strong>
+            <p>{authError}</p>
+          </div>
+          <button className="text-button" onClick={() => setAuthError("")}>닫기</button>
+        </div>
+      ) : null}
       {error ? (
         <div className="notice notice-error" role="alert">
           <div>
@@ -181,7 +206,7 @@ export function App() {
   if (!signedIn)
     return (
       <>
-        <DevelopmentStrip development={development} loading={loading} />
+        <DevelopmentStrip development={development} />
         <main className="login-shell">
           <section className="login-card" aria-busy={loading}>
             <Brand large />
@@ -239,13 +264,23 @@ export function App() {
                         미등록 회원으로 테스트
                       </button>
                     </>
+                  ) : universityEnabled ? (
+                    <>
+                      <button className="primary full" disabled={disabled} onClick={schoolLogin}>
+                        {busy === "university" ? "학교 로그인으로 이동 중…" : "숭실대학교 통합로그인"}
+                        <Icon name="arrow" />
+                      </button>
+                      <p className="helper login-helper">
+                        학교 로그인 화면에서 인증한 뒤 돌아옵니다.
+                      </p>
+                    </>
                   ) : (
                     <>
                       <button className="primary full" disabled>
-                        숭실대학교 통합로그인 준비 중
+                        학교 로그인 일시 중단
                       </button>
                       <p className="helper login-helper">
-                        학교 로그인 연동 검증 후 이용할 수 있습니다.
+                        잠시 후 다시 시도해 주세요.
                       </p>
                     </>
                   )}
@@ -264,7 +299,7 @@ export function App() {
       <div className="panel-head">
         <h2 id="identity-heading">회원 정보</h2>
         <span className={`status-label ${active ? "" : "warning"}`}>
-          {active ? "활성 회원" : "명부 확인 필요"}
+          {access?.label}
         </span>
       </div>
       <div className="identity-summary">
@@ -279,11 +314,15 @@ export function App() {
       <dl className="detail-list">
         <div>
           <dt>학교 인증</dt>
-          <dd>개발용 가상 신원</dd>
+          <dd>{development ? "개발용 가상 신원" : access?.schoolExpired ? "유효기간 만료" : access?.schoolVerified ? "u-SAINT 확인 완료" : "확인 필요"}</dd>
         </div>
+        {profile.department ? <div><dt>소속</dt><dd>{profile.department}</dd></div> : null}
+        {!development && profile.universityVerifiedUntil ? (
+          <div><dt>학교 인증 유효기간</dt><dd>{formatDate(profile.universityVerifiedUntil)}</dd></div>
+        ) : null}
         <div>
           <dt>회원 명부</dt>
-          <dd>{active ? "테스트 명부 일치" : "회원 명부 미등록"}</dd>
+          <dd>{access?.suspended ? "이용 정지" : access?.rosterExpired ? "갱신 대기" : access?.rosterMatched ? development ? "테스트 명부 일치" : "회원 확인 완료" : "회원 명부 미등록"}</dd>
         </div>
         <div>
           <dt>Minecraft</dt>
@@ -291,9 +330,15 @@ export function App() {
         </div>
       </dl>
       <p className="helper">
-        가상 회원 데이터이며 실제 학교 인증이나 운영 서버 권한을 의미하지
-        않습니다.
+        {development
+          ? "가상 회원 데이터이며 실제 학교 인증이나 운영 서버 권한을 의미하지 않습니다."
+          : access?.message}
       </p>
+      {universityEnabled && access?.schoolExpired ? (
+        <button className="primary identity-reauth" disabled={disabled} onClick={schoolLogin}>
+          {busy === "university" ? "학교 로그인으로 이동 중…" : "학교 인증 갱신하기"}
+        </button>
+      ) : null}
     </section>
   );
 
@@ -339,8 +384,7 @@ export function App() {
             </p>
           ) : !active ? (
             <p className="helper warning">
-              회원 자격이 확인되지 않았습니다. 운영자에게 명부 확인을 요청해
-              주세요.
+              {development ? "회원 자격이 확인되지 않았습니다. 운영자에게 명부 확인을 요청해 주세요." : access?.message}
             </p>
           ) : link.webConfirmed ? (
             <div className="command-block">
@@ -505,7 +549,7 @@ export function App() {
       ) : (
         <div className="empty-state">
           <h3>아직 허용된 서버가 없습니다.</h3>
-          <p>회원 명부와 계정 연결 상태를 확인해 주세요.</p>
+          <p>{!development && !active ? access?.message : "회원 명부와 계정 연결 상태를 확인해 주세요."}</p>
         </div>
       )}
       <p className="helper card-footnote">
@@ -524,7 +568,7 @@ export function App() {
       activeView={view}
       onNavigate={(id) => setView(id as View)}
       displayName={profile.displayName}
-      description={active ? profile.membership.roleLabel : "명부 확인 대기"}
+      description={active ? profile.membership.roleLabel : access?.label ?? "회원 확인 대기"}
       development={development}
       onLogout={logout}
       busy={disabled}
@@ -569,7 +613,7 @@ export function App() {
               </p>
               <div className="support-row">
                 <span>학교 인증</span>
-                <small>연동 준비 중</small>
+                <small>{development ? "개발용 신원" : access?.schoolExpired ? "갱신 필요" : "u-SAINT 연동"}</small>
               </div>
               <div className="support-row">
                 <span>Discord ID</span>

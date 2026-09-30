@@ -34,22 +34,17 @@ export function Brand({ large = false }: { large?: boolean }) {
 }
 export function DevelopmentStrip({
   development,
-  loading = false,
 }: {
   development: boolean;
-  loading?: boolean;
 }) {
+  if (!development) return null;
   return (
     <div className="development-strip">
       <span>
-        {development
-          ? "Passport 개발 환경 · 가상 회원 데이터"
-          : loading
-            ? "Passport · 인증 상태 확인 중"
-            : "Passport · 학교 인증 준비 중"}
+        Passport 개발 환경 · 가상 회원 데이터
       </span>
       <span className="strip-detail">
-        {development ? "실제 학교 인증 아님" : "OVERWORLD"}
+        실제 학교 인증 아님
       </span>
     </div>
   );

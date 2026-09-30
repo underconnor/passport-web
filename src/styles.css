@@ -192,7 +192,7 @@ h3 {
   width: 100%;
 }
 .login-shell {
-  min-height: calc(100dvh - 28px);
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -279,6 +279,10 @@ h3 {
 .app-shell {
   display: grid;
   grid-template-columns: 216px minmax(0, 1fr);
+  min-height: 100dvh;
+}
+.development-strip + .app-shell,
+.development-strip + .login-shell {
   min-height: calc(100dvh - 28px);
 }
 .app-sidebar {
@@ -585,6 +589,9 @@ main {
   margin-top: 12px;
   padding: 0 !important;
   font-size: 13px !important;
+}
+.identity-reauth {
+  margin-top: 12px;
 }
 .success-text {
   color: var(--success);
