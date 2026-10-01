@@ -33,6 +33,11 @@ export interface LinkSession {
   gameConfirmed: boolean;
 }
 export type LinkSummary = Pick<LinkSession, "id" | "status" | "expiresAt">;
+export interface DiscordRoleStatus {
+  status: "pending" | "granted" | "revoked" | "failed";
+  updatedAt: string | null;
+  lastError: string | null;
+}
 export interface DiscordConnection {
   discordId: string;
   username: string;
@@ -40,6 +45,14 @@ export interface DiscordConnection {
   linkedAt: string;
   roleStatus: "pending" | "granted" | "revoked" | "failed";
   roleUpdatedAt: string | null;
+  managementConsentRequired?: boolean;
+  membershipSemesters?: string[];
+  roles?: {
+    verification: DiscordRoleStatus | null;
+    member: DiscordRoleStatus | null;
+    semesters: (DiscordRoleStatus & { semester: string })[];
+  };
+  nickname?: { desired: string | null; status: "pending" | "applied" | "failed" | "disabled"; updatedAt: string | null; lastError: string | null } | null;
 }
 export interface DiscordLinkSession {
   id: string;

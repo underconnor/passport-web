@@ -40,7 +40,7 @@ npm run test:browser-membership
 
 ## 컨테이너 배포
 
-Dockerfile은 정적 빌드 결과를 비특권 nginx 사용자로 8080 포트에서 제공합니다. `/v1/`는 같은 Docker 네트워크의 `api:3000`으로 전달합니다. 실제 요청의 Host와 Origin을 유지하므로 API에 프론트의 정확한 Origin을 등록해야 합니다. `/healthz`는 정적 웹 프로세스의 상태만 확인하며 API·DB 정상 여부를 뜻하지 않습니다.
+Dockerfile은 정적 빌드 결과를 비특권 nginx 사용자로 8080 포트에서 제공합니다. `/v1/`과 `/v2/`는 같은 Docker 네트워크의 `api:3000`으로 전달합니다. 실제 요청의 Host와 Origin을 유지하므로 API에 프론트의 정확한 Origin을 등록해야 합니다. `/healthz`는 정적 웹 프로세스의 상태만 확인하며 API·DB 정상 여부를 뜻하지 않습니다.
 
 운영 환경은 TLS와 Secure 세션 쿠키가 필요합니다. 개발 HTTP 환경은 실제 개인정보가 없는 제한된 네트워크에서만 사용합니다. 실제 운영 도메인·비밀값·인프라 Compose는 별도 비공개 운영 저장소에서 관리합니다.
 
@@ -57,16 +57,17 @@ Dockerfile은 정적 빌드 결과를 비특권 nginx 사용자로 8080 포트�
 | `POST /v1/auth/logout` | 세션 종료 |
 | `GET /v1/me` | 내 프로필 |
 | `GET /v1/me/servers` | 허용 서버 |
+| `POST /v1/me/discord/consent` | 기존 Discord 연결자의 최신 역할·닉네임 처리 동의 |
 | `GET /v1/me/minecraft-skin` | 연결된 Minecraft 계정의 PNG data URI |
 | `POST /v1/link-sessions/:id/inspect` | 일회용 요청 조회 |
 | `POST /v1/link-sessions/:id/web-confirm` | 이미 로그인한 사용자의 필수 동의와 게임 연결 확인 |
 | `POST /v1/link-sessions/:id/skin` | 본문 token과 CSRF로 연결 대상의 PNG data URI 조회 |
 | `POST /v1/discord/link-sessions/:id/inspect` | 봇이 발급한 Discord 연동 요청과 대상 계정 조회 |
-| `POST /v1/discord/link-sessions/:id/web-confirm` | 이미 로그인한 활성 회원의 Discord 연결 확인 |
+| `POST /v1/discord/link-sessions/:id/web-confirm` | 이미 학교 인증을 완료한 사용자의 Discord 연결 확인 |
 
 학교 인증·소모임 회원·서버 권한은 별도 상태입니다. 서버 목록은 `GET /v1/me/servers`의 `{ servers: [{ id, label }] }` 응답만 사용하고 전체 서버 명부를 요청하거나 접속 불가 서버를 표시하지 않습니다. 빈 배열이면 **접속 가능한 서버가 없습니다**로 표시합니다. 목록 재조회 중·실패 상태는 빈 목록과 구분하며, 실패 시 이전 권한 목록을 숨깁니다. 늦은 프로필·세션 응답이 최신 결과를 덮지 않도록 요청 세대를 검사합니다.
 
-Minecraft 연결은 유효한 학교 인증·비정지·접속 가능 서버 1개 이상이 필요합니다. API가 학교 인증 대상 서버를 반환하면 비회원 또는 명부 갱신 대기 상태에서도 연결할 수 있습니다. 개발용 신원은 명시적인 개발 인증 모드와 API 반환 서버가 모두 있을 때만 테스트 연결을 제공합니다. 최종 허가는 API가 다시 검증합니다. Discord 연결은 계속 유효한 학교 인증과 활성 소모임 회원 자격을 요구합니다.
+Minecraft 연결은 유효한 학교 인증·비정지·접속 가능 서버 1개 이상이 필요합니다. API가 학교 인증 대상 서버를 반환하면 비회원 또는 명부 갱신 대기 상태에서도 연결할 수 있습니다. 개발용 신원은 명시적인 개발 인증 모드와 API 반환 서버가 모두 있을 때만 테스트 연결을 제공합니다. 최종 허가는 API가 다시 검증합니다. Discord 연결은 유효한 학교 인증과 비정지 상태가 필요하며 소모임 비회원도 연결할 수 있습니다.
 
 연결 URL은 `/link/:id#token=...`입니다. 토큰은 최초 로드 때 메모리로 읽은 뒤 주소에서 즉시 제거하며, API에는 POST body로만 전송합니다. localStorage·sessionStorage·분석 도구에 기록하지 않습니다. 새로고침으로 메모리의 토큰을 잃으면 게임에서 원래 링크를 다시 열어야 합니다. 웹 확인 후에는 프록시가 현재 게임 세션을 확인해 연결과 이동을 진행합니다. 브라우저는 보이는 동안 inspect를 직렬 조회하며 연결 완료 시 프로필을 갱신합니다. 게임 입장 여부를 추측하거나 게임용 서비스 API를 호출하지 않습니다.
 
@@ -76,11 +77,11 @@ Minecraft 연결은 유효한 학교 인증·비정지·접속 가능 서버 1�
 
 스킨은 API가 제공한 제한된 PNG data URI만 canvas에 그립니다. 외부 URL은 사용하지 않으며 클래식·슬림 및 64×32/64×64 이미지를 처리합니다. 스킨 오류는 로그인이나 계정 연결을 막지 않습니다.
 
-Discord 연동은 디스코드 서버의 봇에서 시작합니다. 호출자에게만 보이는 `/discord/link/:id#token=...` 링크를 열면 API가 확인한 대상 계정을 표시합니다. 동의 후 학교 로그인 시작 요청에 `discordLink: { id, token }`을 전달하고, 학교 인증을 마치면 API가 연결을 처리합니다. 이미 로그인한 활성 회원은 동의와 token을 web-confirm으로 보냅니다. Minecraft 문맥과 Discord 문맥은 경로로 구분하며 한 요청에 섞지 않습니다.
+Discord 연동은 디스코드 서버의 봇에서 시작합니다. 호출자에게만 보이는 `/discord/link/:id#token=...` 링크를 열면 API가 확인한 대상 계정을 표시합니다. 동의 후 학교 로그인 시작 요청에 `discordLink: { id, token }`을 전달하고, 학교 인증을 마치면 API가 연결을 처리합니다. 이미 학교 인증을 완료한 사용자는 동의와 token을 web-confirm으로 보냅니다. Minecraft 문맥과 Discord 문맥은 경로로 구분하며 한 요청에 섞지 않습니다.
 
 학교 인증과 Discord 연결은 별도 결과입니다. `discord_link_error`는 허용된 코드로만 표시하고 주소에서 지우며, 연결 실패가 유효한 학교 세션을 지우지 않습니다. 만료된 링크에서도 `/me.discordConnection`에 검증된 연결이 있으면 실제 계정·역할 상태를 표시합니다. 예전 `discordReference` 직접 입력 값은 연결 근거로 사용하지 않습니다. 사용자용 ID 입력·변경·삭제 요청은 없으며 연결 변경·해제는 관리자에게 문의합니다.
 
-Discord 회원 역할은 API의 `pending`·`granted`·`revoked`·`failed` 응답을 구분합니다. 계정 연결만으로 역할 지급 성공을 표시하지 않습니다. 대기 상태에서는 보이는 계정·Discord 화면에서 5초 간격으로 최대 2분 동안 상태를 확인하며, 숨긴 탭이나 완료·실패 상태에서는 조회를 중단합니다. 이후에도 새로고침으로 확인할 수 있습니다. 아바타는 이니셜을 사용하고 Discord CDN 요청을 만들지 않습니다.
+Discord 학교·회원·학기 역할은 각각 API의 `pending`·`granted`·`revoked`·`failed` 응답을 구분합니다. 계정 연결만으로 역할 지급 성공을 표시하지 않습니다. 대기 상태에서는 보이는 계정·Discord 화면에서 5초 간격으로 최대 2분 동안 상태를 확인하며, 숨긴 탭이나 완료·실패 상태에서는 조회를 중단합니다. 이후에도 새로고침으로 확인할 수 있습니다. 아바타는 이니셜을 사용하고 Discord CDN 요청을 만들지 않습니다.
 
 `/auth/session.features.discordLinking`이 `true`일 때만 신규 연결을 제공합니다. 준비되지 않은 환경에서는 준비 중 안내를 표시하면서 기존 검증된 연결과 역할 상태는 유지합니다. 봇 서비스 토큰이나 Discord API 자격 증명은 브라우저에 전달하지 않습니다.
 
@@ -91,3 +92,14 @@ Discord 회원 역할은 API의 `pending`·`granted`·`revoked`·`failed` 응답
 ## 화면 기준
 
 ALMS v4 A의 중립 회색·블루 레이아웃과 사용자가 지정한 Pretendard를 적용했습니다. 서체·아이콘을 자체 호스팅하며 외부 CDN을 사용하지 않습니다. 치수·색상·출처는 [화면 기준과 에셋](docs/design-system.md)을 참고하세요.
+
+
+## Discord 역할·닉네임 동기화
+
+연결된 계정의 학교 인증 역할, 현재 Overworld 회원 역할, 누적 참여 학기 역할을 각각 표시합니다. 현재 회원이 아니어도 학교 인증과 비정지 조건을 만족하면 Discord 계정을 연결할 수 있습니다. 역할의 지급·회수·실패는 API 응답으로만 표시하며 현재 회원 여부로 추정하지 않습니다.
+
+기존 연결자의 `managementConsentRequired`가 true이면 최신 개인정보 안내에 명시적으로 동의한 뒤 `POST /v1/me/discord/consent`에 현재 버전을 전송합니다. 동의 전에도 기존 계정 연결은 표시합니다. 학교·회원·학기 역할 중 하나 또는 닉네임이 pending이면 기존 5초 직렬 조회를 이용해 최대 2분간 갱신합니다.
+
+닉네임의 요청값과 실제 반영 완료를 구분합니다. 서버가 같은 버전의 적용을 확인했을 때만 완료라고 표시하며, 봇보다 높거나 같은 역할 또는 서버 소유자의 `not_manageable` 오류는 역할 지급 성공과 별도로 안내합니다. 사용자 연결 해제·변경은 관리자 문의 방식을 유지합니다.
+
+nginx는 `/v1/`과 `/v2/`에 동일한 API 프록시·Host·보안 헤더·로그/캐시 정책을 적용합니다. CI는 폐기 가능한 가상 API와 실제 nginx 컨테이너로 GET/POST 라우팅과 SPA 경로를 검사합니다. 브라우저 테스트에서 기존 agent-browser를 쓰려면 `PASSPORT_AGENT_BROWSER=/path/to/agent-browser`를 지정할 수 있습니다.

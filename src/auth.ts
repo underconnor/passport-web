@@ -60,7 +60,7 @@ export function accountAccess(profile: Profile, now = Date.now()) {
   const rosterExpired = rosterMatched && (!future(profile.membership.verifiedUntil, now) || profile.membership.effectiveStatus === "stale");
   const membershipActive = rosterMatched && !rosterExpired;
   // Club membership is independent of school identity and per-server authorization.
-  const canLinkDiscord = !suspended && membershipActive && schoolValid;
+  const canLinkDiscord = !suspended && schoolValid;
   const label = profile.membership.status === "suspended" ? "회원 이용 정지"
     : !rosterMatched ? "소모임 비회원"
     : rosterExpired ? "회원 확인 갱신 대기" : "소모임 회원";

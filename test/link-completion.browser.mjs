@@ -70,12 +70,12 @@ const server = http.createServer(async (request, response) => {
   } catch { json(404, { code: 'not_found' }); }
 });
 let expiry;
-const browser = async (...args) => (await run('npx', ['--yes', 'agent-browser@0.38.1', '--session', browserSession, ...args], { timeout: 30_000, maxBuffer: 1_000_000 })).stdout.trim();
+const browser = async (...args) => (await run(process.env.PASSPORT_AGENT_BROWSER || 'npx', [...(process.env.PASSPORT_AGENT_BROWSER ? [] : ['--yes', 'agent-browser@0.38.1']), '--session', browserSession, ...args], { timeout: 30_000, maxBuffer: 1_000_000 })).stdout.trim();
 const inspect = async (expression) => {
   let value = JSON.parse(await browser('eval', `JSON.stringify(${expression})`));
   if (typeof value === 'string') value = JSON.parse(value); return value;
 };
-const until = async (expression) => { for (let n = 0; n < 12; n++) { if (await inspect(expression)) return; } assert.fail('Expected browser state was not observed'); };
+const until = async (expression) => { for (let n = 0; n < 12; n++) { if (await inspect(expression)) return; await new Promise(resolve => setTimeout(resolve, 500)); } assert.fail('Expected browser state was not observed'); };
 
 test('link completion updates automatically without commands or leaving the current view', { timeout: 180_000 }, async (t) => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -99,8 +99,8 @@ test('link completion updates automatically without commands or leaving the curr
       await browser('find', 'role', 'button', 'click', '--name', 'Discord 연결');
       state.gameConnected = true;
       await until("document.querySelector('nav button[aria-current=page]')?.textContent.includes('Discord 연결')");
-      // Each browser round-trip allows the real 2s poll to run; wait for profile fetch too.
-      for (let n = 0; n < 12 && state.profileReads < 2; n++) await inspect('document.body.textContent.length');
+      // Wait for the real 2s poll independently of browser CLI startup speed.
+      for (let n = 0; n < 12 && state.profileReads < 2; n++) await new Promise(resolve => setTimeout(resolve, 500));
       assert.equal(state.profileReads, 2); assert.equal(state.serverReads, 2); assert.equal(state.authReads, 1);
       assert.equal(await inspect("document.querySelector('nav button[aria-current=page]').textContent.includes('Discord 연결')"), true);
       await browser('find', 'role', 'button', 'click', '--name', 'Minecraft 연결');

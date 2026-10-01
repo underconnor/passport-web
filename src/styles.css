@@ -1123,3 +1123,11 @@ input:disabled {
     font-size: 12px;
   }
 }
+
+.discord-role-breakdown { margin-top: 18px; border-top: 1px solid var(--border); }
+.discord-role-row { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.discord-role-row strong { font-size: 12px; font-weight: 500; flex-shrink: 0; }
+.discord-role-breakdown > p { margin-top: 10px; }
+.discord-semesters { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-top: 16px; color: var(--muted); font-size: 12px; }
+.discord-semesters strong { padding: 3px 9px; background: var(--selected); border-radius: 6px; color: var(--text); font-weight: 500; }
+.discord-management-consent h3 { margin-bottom: 6px; }

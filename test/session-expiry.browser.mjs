@@ -59,7 +59,7 @@ const server = http.createServer(async (request, response) => {
   } catch { json(404, { code: 'not_found' }); }
 });
 const browser = async (...args) => {
-  const result = await run('npx', ['--yes', 'agent-browser@0.38.1', '--session', sessionName, ...args], { timeout: 30_000, maxBuffer: 1_000_000 });
+  const result = await run(process.env.PASSPORT_AGENT_BROWSER || 'npx', [...(process.env.PASSPORT_AGENT_BROWSER ? [] : ['--yes', 'agent-browser@0.38.1']), '--session', sessionName, ...args], { timeout: 30_000, maxBuffer: 1_000_000 });
   return result.stdout.trim();
 };
 const inspect = async (expression) => {

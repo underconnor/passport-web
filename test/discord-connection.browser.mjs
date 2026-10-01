@@ -18,7 +18,7 @@ const account = { discordId: '123456789012345678', username: 'synthetic.member',
 const future = () => new Date(Date.now() + 300_000).toISOString();
 let state;
 function reset(options = {}) {
-  state = { authenticated: false, enabled: true, active: true, linked: false, expired: false, expireConfirm: false, roleStatus: 'pending',
+  state = { authenticated: false, enabled: true, active: true, schoolExpired: false, suspended: false, managementConsentRequired: false, extended: false, nicknameStatus: "pending", memberRoleStatus: "revoked", termStatus: "pending", consents: [], linked: false, expired: false, expireConfirm: false, roleStatus: 'pending',
     expiresAt: future(), starts: [], confirms: [], inspectReads: 0, legacyWrites: 0, ...options };
 }
 const server = http.createServer(async (request, response) => {
@@ -29,10 +29,13 @@ const server = http.createServer(async (request, response) => {
   if (url.pathname === '/v1/auth/session') return json(200, { authenticated: state.authenticated, authMode: 'university', features: { discordLinking: state.enabled }, csrfToken: state.authenticated ? 'synthetic-auth-csrf' : 'synthetic-anon-csrf' });
   if (url.pathname === '/v1/me') return json(200, {
     id: '00000000-0000-4000-8000-000000000001', displayName: '합성 학교 회원', identityProvider: 'usaint', department: '가상 학과', academicStatus: 'ENROLLED',
-    universityVerifiedAt: new Date().toISOString(), universityVerifiedUntil: future(), accessSuspended: false,
+    universityVerifiedAt: new Date().toISOString(), universityVerifiedUntil: state.schoolExpired ? new Date(Date.now() - 10000).toISOString() : future(), accessSuspended: state.suspended,
     membership: { status: state.active ? 'active' : 'inactive', effectiveStatus: state.active ? 'active' : 'revoked', roleLabel: '가상 회원', verifiedUntil: future() },
     minecraft: null,
-    discordConnection: state.linked ? { ...account, linkedAt: new Date().toISOString(), roleStatus: state.roleStatus, roleUpdatedAt: null } : null,
+    discordConnection: state.linked ? { ...account, linkedAt: new Date().toISOString(), roleStatus: state.roleStatus, roleUpdatedAt: null,
+      ...(state.extended ? { managementConsentRequired: state.managementConsentRequired, membershipSemesters: ['26-2', '27-1'],
+        roles: { verification: { status: state.roleStatus, updatedAt: null, lastError: null }, member: { status: state.memberRoleStatus, updatedAt: null, lastError: null }, semesters: [{ semester: '26-2', status: 'granted', updatedAt: null, lastError: null }, { semester: '27-1', status: state.termStatus, updatedAt: null, lastError: null }] },
+        nickname: { desired: '합성 사용자 / SyntheticPlayer', status: state.nicknameStatus, updatedAt: null, lastError: state.nicknameStatus === 'failed' ? 'not_manageable' : null } } : {}) } : null,
     csrfToken: 'synthetic-auth-csrf',
   });
   if (url.pathname === '/v1/me/servers') return json(200, { servers: state.active ? [{ id: 'fixture', label: '가상 회원 서버' }] : [] });
@@ -45,10 +48,11 @@ const server = http.createServer(async (request, response) => {
   if (url.pathname === `/v1/discord/link-sessions/${id}/web-confirm`) {
     state.confirms.push(await body()); assert.equal(request.headers['x-csrf-token'], 'synthetic-auth-csrf');
     if (state.expireConfirm) { state.authenticated = false; return json(401, { code: 'session_required' }); }
-    if (!state.active) return json(403, { code: 'membership_required' });
+    if (state.schoolExpired || state.suspended) return json(403, { code: 'membership_required' });
     state.linked = true;
     return json(200, { id, status: 'linked', expiresAt: state.expiresAt });
   }
+  if (url.pathname === '/v1/me/discord/consent') { state.consents.push(await body()); assert.equal(request.headers['x-csrf-token'], 'synthetic-auth-csrf'); state.managementConsentRequired = false; return json(200, { updated: true }); }
   if (url.pathname === '/v1/auth/university/start') {
     state.starts.push({ body: await body(), csrf: request.headers['x-csrf-token'] });
     return json(503, { code: 'university_provider_not_configured' });
@@ -62,14 +66,14 @@ const server = http.createServer(async (request, response) => {
     response.writeHead(200, { 'Content-Type': mime, 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'" }); response.end(data);
   } catch { json(404, { code: 'not_found' }); }
 });
-const browser = async (...args) => (await run('npx', ['--yes', 'agent-browser@0.38.1', '--session', session, ...args], { timeout: 30_000, maxBuffer: 1_000_000 })).stdout.trim();
+const browser = async (...args) => (await run(process.env.PASSPORT_AGENT_BROWSER || 'npx', [...(process.env.PASSPORT_AGENT_BROWSER ? [] : ['--yes', 'agent-browser@0.38.1']), '--session', session, ...args], { timeout: 30_000, maxBuffer: 1_000_000 })).stdout.trim();
 const inspect = async (expression) => { let value = JSON.parse(await browser('eval', `JSON.stringify(${expression})`)); if (typeof value === 'string') value = JSON.parse(value); return value; };
-const until = async (expression) => { for (let n = 0; n < 16; n++) if (await inspect(expression)) return; assert.fail('Expected Discord state not observed'); };
+const until = async (expression) => { for (let n = 0; n < 16; n++) { if (await inspect(expression)) return; await new Promise(resolve => setTimeout(resolve, 500)); } assert.fail('Expected Discord state not observed'); };
 const open = async (url) => { await browser('open', 'about:blank'); await browser('open', url); await browser('wait', '--load', 'networkidle'); };
 const click = (name) => browser('find', 'role', 'button', 'click', '--name', name);
 const consent = () => browser('find', 'role', 'checkbox', 'check', '--name', '개인정보 수집·이용에 동의합니다.');
 
-test('bot-proven Discord linking and applied role status', { timeout: 180_000 }, async (t) => {
+test('bot-proven Discord linking and applied role status', { timeout: 300_000 }, async (t) => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
   const url = `${origin}/discord/link/${id}#token=${token}`;
@@ -119,10 +123,13 @@ test('bot-proven Discord linking and applied role status', { timeout: 180_000 },
       assert.equal(await inspect("document.body.textContent.includes('계정 연결은 유지')"), true);
       assert.equal(state.confirms.length, 0);
     });
-    await t.test('inactive membership, expired link and missing token do not expose a connection action', async () => {
+    await t.test('school-verified nonmember can connect while school expiry, suspension, expired link and missing token cannot', async () => {
       reset({ authenticated: true, active: false }); await open(url);
-      assert.equal(await inspect('document.querySelector(".discord-confirm") === null'), true);
-      assert.equal(state.confirms.length, 0);
+      assert.equal(await inspect('Boolean(document.querySelector(".discord-confirm"))'), true);
+      await consent(); await click('동의하고 이 Discord 계정 연결');
+      await until("document.body.textContent.includes('@synthetic.member') && !document.querySelector('.discord-confirm')");
+      assert.equal(state.confirms.length, 1);
+      for (const restriction of [{ schoolExpired: true }, { suspended: true }]) { reset({ authenticated: true, ...restriction }); await open(url); assert.equal(await inspect('document.querySelector(".discord-confirm") === null'), true); assert.equal(state.confirms.length, 0); }
       reset({ expired: true }); await open(url);
       assert.equal(await inspect("document.body.textContent.includes('봇') && document.body.textContent.includes('만료')"), true);
       assert.equal(await inspect('document.querySelector(".login-actions .primary").disabled'), true);
@@ -154,6 +161,28 @@ test('bot-proven Discord linking and applied role status', { timeout: 180_000 },
       reset({ enabled: false }); await open(url);
       assert.equal(await inspect('document.querySelector(".login-actions .primary").disabled'), true);
       assert.equal(state.starts.length, 0);
+    });
+    await t.test('existing connection needs new unchecked management consent and sends the exact current notice version', async () => {
+      reset({ authenticated: true, linked: true, extended: true, roleStatus: 'granted', managementConsentRequired: true }); await open(origin); await click('Discord 연결');
+      assert.equal(await inspect('document.querySelector(".discord-management-consent .primary").disabled'), true);
+      assert.equal(await inspect('Boolean(document.querySelector(".discord-identity"))'), true);
+      await consent(); await click('동의하고 역할·닉네임 동기화');
+      await until('document.querySelector(".discord-management-consent") === null');
+      assert.deepEqual(state.consents, [{ consent: { accepted: true, version: privacy.version } }]);
+      assert.equal(await inspect("document.body.textContent.includes('닉네임 반영 대기')"), true);
+    });
+    await t.test('school, current membership, accumulated terms and nickname report independent applied states', async () => {
+      reset({ authenticated: true, linked: true, active: false, extended: true, roleStatus: 'granted', termStatus: 'granted', nicknameStatus: 'failed' }); await open(origin); await click('Discord 연결'); await browser('set', 'viewport', '1440', '900');
+      const rows = await inspect('[...document.querySelectorAll(".discord-role-row")].map(row => row.textContent)');
+      assert.deepEqual(rows, ['학교 인증지급 완료', '현재 Overworld 회원역할 없음', '26-2 참여 학기지급 완료', '27-1 참여 학기지급 완료']);
+      assert.equal(await inspect("document.body.textContent.includes('닉네임 반영 실패')"), true);
+      assert.equal(await inspect("document.body.textContent.includes('닉네임 반영 완료')"), false);
+      assert.equal(await inspect("document.body.textContent.includes('not_manageable')"), false);
+      await browser('screenshot', '/tmp/passport-web-discord-v2-desktop.png');
+      state.nicknameStatus = 'pending'; await click('새로고침'); await until("document.body.textContent.includes('닉네임 반영 대기')");
+      state.nicknameStatus = 'applied'; await until("document.body.textContent.includes('닉네임 반영 완료')");
+      await browser('set', 'viewport', '390', '844'); assert.equal(await inspect('document.documentElement.scrollWidth <= innerWidth'), true);
+      await browser('screenshot', '/tmp/passport-web-discord-v2-mobile.png');
     });
   } finally {
     await browser('close').catch(() => {});

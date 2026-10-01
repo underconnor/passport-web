@@ -63,9 +63,9 @@ const server = http.createServer(async (request, response) => {
     response.writeHead(200, { 'Content-Type': type, 'Content-Security-Policy': csp }); response.end(content);
   } catch { json(404, { code: 'not_found' }); }
 });
-const browser = async (...args) => (await run('npx', ['--yes', 'agent-browser@0.38.1', '--session', session, ...args], { timeout: 30_000, maxBuffer: 1_000_000 })).stdout.trim();
+const browser = async (...args) => (await run(process.env.PASSPORT_AGENT_BROWSER || 'npx', [...(process.env.PASSPORT_AGENT_BROWSER ? [] : ['--yes', 'agent-browser@0.38.1']), '--session', session, ...args], { timeout: 30_000, maxBuffer: 1_000_000 })).stdout.trim();
 const inspect = async (expression) => { let value = JSON.parse(await browser('eval', `JSON.stringify(${expression})`)); if (typeof value === 'string') value = JSON.parse(value); return value; };
-const until = async (expression) => { for (let n = 0; n < 12; n++) { if (await inspect(expression)) return; } assert.fail('Expected browser state not observed'); };
+const until = async (expression) => { for (let n = 0; n < 12; n++) { if (await inspect(expression)) return; await new Promise(resolve => setTimeout(resolve, 500)); } assert.fail('Expected browser state not observed'); };
 const consent = () => browser('find', 'role', 'checkbox', 'check', '--name', '개인정보 수집·이용에 동의합니다.');
 const click = (name) => browser('find', 'role', 'button', 'click', '--name', name);
 const open = async (url) => { await browser('open', 'about:blank'); await browser('open', url); await browser('wait', '--load', 'networkidle'); };

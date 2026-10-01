@@ -3,7 +3,7 @@ import { api, ApiError, errorMessage } from "./api";
 import type { AuthSession, DiscordLinkSession, LinkSession, LinkSummary, MinecraftSkin, PrivacyNotice, Profile, Server, UniversityStart } from "./api";
 import { accountAccess, minecraftEligibility, linkCallbackError, schoolLoginDestination, universityCallbackError } from "./auth";
 import { automaticDiscordError, automaticLinkError, discordLinkReference, invalidDiscordLinkPath, invalidLinkPath, linkReference, universityAuthError } from "./link";
-import { discordLinkError as discordFailureMessage } from "./discord";
+import { discordLinkError as discordFailureMessage, discordSynchronizationPending } from "./discord";
 import { DiscordCard, DiscordTarget } from "./DiscordCard";
 import { pollLink } from "./link-polling";
 import { privacyNotice } from "./privacy";
@@ -347,10 +347,10 @@ export function App() {
     return () => controller.abort();
   }, [signedIn, completedLinkId, fetchAccount]);
 
-  const pendingDiscordRole = profile?.discordConnection?.roleStatus === "pending" && (view === "dashboard" || view === "discord")
+  const pendingDiscordRole = profile?.discordConnection && discordSynchronizationPending(profile.discordConnection) && (view === "dashboard" || view === "discord")
     ? profile.discordConnection.discordId : null;
   const rolePollResult = useEffectEvent((me: Profile | null) => {
-    return me?.discordConnection?.roleStatus === "pending" ? "continue" as const : "stop" as const;
+    return discordSynchronizationPending(me?.discordConnection) ? "continue" as const : "stop" as const;
   });
   const rolePollError = useEffectEvent((failure: unknown) => {
     if (failure instanceof ApiError && failure.status === 401) { completionError(failure); return "stop" as const; }
@@ -455,7 +455,7 @@ export function App() {
             <h1>{targetDiscordId ? "내 Discord 계정 연결" : targetLinkId ? "내 Minecraft 계정 연결" : "Overworld에 오신 것을 환영해요"}</h1>
             <p className="login-description">
               {targetLinkId || targetDiscordId ? "아래 계정이 본인 계정인지 확인해 주세요." : "학교 계정으로 로그인하고"}
-              <br />{targetDiscordId ? "학교 인증 후 디스코드 회원 역할을 반영합니다." : targetLinkId ? "학교 인증을 마치면 게임에 자동으로 연결됩니다." : "Minecraft와 Discord 계정을 관리하세요."}
+              <br />{targetDiscordId ? "학교 인증 후 디스코드 역할과 닉네임을 반영합니다." : targetLinkId ? "학교 인증을 마치면 게임에 자동으로 연결됩니다." : "Minecraft와 Discord 계정을 관리하세요."}
             </p>
             {loading ? (
               <div className="login-loading" role="status">
@@ -743,6 +743,13 @@ export function App() {
       setDiscordLink((current) => current?.id === result.id ? { ...current, ...result } : current);
       setCallbackDiscordError("");
     })}
+    onManagementConsent={() => void perform("discord-consent", async () => {
+      if (!privacy || !consentReady) throw new ApiError(400, "consent_required");
+      await api("/me/discord/consent", { method: "POST", body: { consent: { accepted: true, version: privacy.version } }, csrfToken });
+      setConsentAccepted(false);
+      await refresh();
+      setNotice("Discord 관리에 동의했습니다. 역할과 닉네임의 실제 처리 상태를 확인해 주세요.");
+    })}
     onAccount={() => setView("dashboard")}
   />;
 
@@ -800,7 +807,7 @@ export function App() {
               : view === "minecraft"
                 ? "본인 계정을 확인하면 게임 접속을 확인해 자동으로 연결합니다."
                 : view === "discord"
-                  ? "학교 계정과 연결된 Discord 계정과 회원 역할을 확인합니다."
+                  ? "연결된 Discord 계정과 역할·닉네임 반영 상태를 확인합니다."
                   : "현재 접속할 수 있는 서버를 확인합니다."}
           </p>
         </div>

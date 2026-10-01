@@ -45,23 +45,24 @@ test('verified enrolled, leave-of-absence and unknown academic labels use roster
 });
 test('unregistered roster, stale roster, expired school identity and suspension have distinct next actions', () => {
   const inactive = accountAccess({ ...profile, membership: { ...profile.membership, status: 'inactive' } }, now);
-  assert.equal(inactive.canLinkDiscord, false); assert.equal(inactive.label, '소모임 비회원');
+  assert.equal(inactive.canLinkDiscord, true); assert.equal(inactive.label, '소모임 비회원');
   const stale = accountAccess({ ...profile, membership: { ...profile.membership, verifiedUntil: expired } }, now);
-  assert.equal(stale.canLinkDiscord, false); assert.equal(stale.label, '회원 확인 갱신 대기');
+  assert.equal(stale.canLinkDiscord, true); assert.equal(stale.label, '회원 확인 갱신 대기');
   const schoolExpired = accountAccess({ ...profile, universityVerifiedUntil: expired }, now);
   assert.equal(schoolExpired.canLinkDiscord, false); assert.equal(schoolExpired.label, '소모임 회원'); assert.equal(schoolExpired.schoolExpired, true);
   const suspended = accountAccess({ ...profile, accessSuspended: true }, now);
   assert.equal(suspended.canLinkDiscord, false); assert.equal(suspended.label, '소모임 회원'); assert.equal(suspended.suspended, true);
 });
-test('missing, malformed and exact-boundary validity values do not show active access', () => {
+test('school validity gates Discord while stale roster remains a separate member state', () => {
   for (const value of [null, 'malformed', new Date(now).toISOString()]) {
     assert.equal(accountAccess({ ...profile, universityVerifiedUntil: value }, now).canLinkDiscord, false);
-    assert.equal(accountAccess({ ...profile, membership: { ...profile.membership, verifiedUntil: value } }, now).canLinkDiscord, false);
+    assert.equal(accountAccess({ ...profile, membership: { ...profile.membership, verifiedUntil: value } }, now).membershipActive, false);
+    assert.equal(accountAccess({ ...profile, membership: { ...profile.membership, verifiedUntil: value } }, now).canLinkDiscord, true);
   }
 });
-test('a server-side denial remains authoritative even when the browser clock sees future validity', () => {
+test('Discord accepts school-verified nonmembers but respects a server-side suspension', () => {
   for (const effectiveStatus of ['revoked', 'stale', 'suspended']) {
-    assert.equal(accountAccess({ ...profile, membership: { ...profile.membership, effectiveStatus } }, now).canLinkDiscord, false);
+    assert.equal(accountAccess({ ...profile, membership: { ...profile.membership, effectiveStatus } }, now).canLinkDiscord, effectiveStatus !== 'suspended');
   }
 });
 
@@ -72,8 +73,8 @@ test('Minecraft eligibility uses valid school identity and returned servers, ind
     assert.equal(minecraftEligibility(subject, 1, false, now).allowed, true);
     assert.equal(minecraftEligibility(subject, 0, false, now).allowed, false);
   }
-  assert.equal(accountAccess(nonmember, now).canLinkDiscord, false);
-  assert.equal(accountAccess(staleMember, now).canLinkDiscord, false);
+  assert.equal(accountAccess(nonmember, now).canLinkDiscord, true);
+  assert.equal(accountAccess(staleMember, now).canLinkDiscord, true);
 });
 test('suspension and expired or invalid school identity block new Minecraft linking even with a stale server response', () => {
   for (const subject of [

@@ -61,9 +61,9 @@ const server = http.createServer(async (request, response) => {
     response.writeHead(200, { 'Content-Type': mime, 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'" }); response.end(data);
   } catch { json(404, { code: 'not_found' }); }
 });
-const browser = async (...args) => (await run('npx', ['--yes', 'agent-browser@0.38.1', '--session', session, ...args], { timeout: 30_000, maxBuffer: 1_000_000 })).stdout.trim();
+const browser = async (...args) => (await run(process.env.PASSPORT_AGENT_BROWSER || 'npx', [...(process.env.PASSPORT_AGENT_BROWSER ? [] : ['--yes', 'agent-browser@0.38.1']), '--session', session, ...args], { timeout: 30_000, maxBuffer: 1_000_000 })).stdout.trim();
 const inspect = async (expression) => { let value = JSON.parse(await browser('eval', `JSON.stringify(${expression})`)); if (typeof value === 'string') value = JSON.parse(value); return value; };
-const until = async (expression) => { for (let n = 0; n < 16; n++) if (await inspect(expression)) return; assert.fail('Expected membership/server state not observed'); };
+const until = async (expression) => { for (let n = 0; n < 16; n++) { if (await inspect(expression)) return; await new Promise(resolve => setTimeout(resolve, 500)); } assert.fail('Expected membership/server state not observed'); };
 const open = async (url, idle = true) => { await browser('open', 'about:blank'); await browser('open', url); if (idle) await browser('wait', '--load', 'networkidle'); };
 const click = (name) => browser('find', 'role', 'button', 'click', '--name', name);
 const serverNames = () => inspect('[...document.querySelectorAll(".server-list h3")].map(item => item.textContent)');
@@ -88,7 +88,7 @@ test('club membership and school server permissions stay independent', { timeout
       assert.equal(await inspect('getComputedStyle(document.querySelector(".topbar")).height'), '64px');
       await browser('screenshot', '/tmp/passport-web-membership-desktop.png');
     });
-    await t.test('nonmember sees a returned university server and can link Minecraft while Discord remains member-only', async () => {
+    await t.test('nonmember sees a returned university server and can link Minecraft and school-verified Discord linking is available', async () => {
       reset({ member: false, servers: [universityServer] }); await open(origin); await browser('set', 'viewport', '390', '844');
       assert.equal(await inspect('document.querySelector(".membership-label").textContent'), '소모임 비회원');
       assert.deepEqual(await serverNames(), [universityServer.label]);
@@ -101,8 +101,8 @@ test('club membership and school server permissions stay independent', { timeout
       await until("document.body.textContent.includes('계정 연결이 완료되었습니다')");
       assert.deepEqual(state.confirms, [{ token, consent: { accepted: true, version: privacy.version } }]);
       await open(`${origin}/discord/link/${id}#token=${token}`);
-      assert.equal(await inspect('document.querySelector(".discord-confirm") === null'), true);
-      assert.equal(await inspect("document.body.textContent.includes('학교 인증과 활성 회원 자격')"), true);
+      assert.equal(await inspect('Boolean(document.querySelector(".discord-confirm"))'), true);
+      assert.equal(await inspect('document.querySelector(".discord-confirm .primary").disabled'), true);
     });
     await t.test('member and nonmember without servers see the exact empty state and cannot start a Minecraft confirmation', async () => {
       for (const member of [true, false]) {
