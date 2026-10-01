@@ -10,7 +10,8 @@ Overworld 회원 인증과 Minecraft 계정 연결을 위한 독립 React·TypeS
 - 서버가 제공한 개인정보 안내와 버전에 대한 필수 동의, 변경된 안내 재동의
 - Minecraft 일회용 링크의 대상 확인, 학교 인증 후 자동 연결 대기·완료 표시
 - 같은 출처 API가 제공한 PNG로 Minecraft 머리·전신 표시, 실패 시 기본 아바타
-- Discord 숫자 사용자 ID 입력·수정·삭제와 소유권 미확인 표시
+- Discord 봇의 호출자 전용 연동 링크, 동의·학교 인증으로 연결된 계정 표시
+- Discord 연결과 역할 대기·지급·회수·처리 실패를 분리하고 변경·해제는 관리자 문의로 안내
 - 실제 API 응답에 기반한 회원 상태와 허용 서버 표시
 - 오류, 만료, 연결 누락, 비활성 회원 처리
 - 학교 인증·회원 명부·이용 정지 상태를 구분하고 학교 인증 만료 시 재인증
@@ -54,10 +55,11 @@ Dockerfile은 정적 빌드 결과를 비특권 nginx 사용자로 8080 포트�
 | `GET /v1/me` | 내 프로필 |
 | `GET /v1/me/servers` | 허용 서버 |
 | `GET /v1/me/minecraft-skin` | 연결된 Minecraft 계정의 PNG data URI |
-| `PUT /v1/me/discord-id` / `DELETE /v1/me/discord-id` | 직접 입력한 ID 저장·삭제 |
 | `POST /v1/link-sessions/:id/inspect` | 일회용 요청 조회 |
 | `POST /v1/link-sessions/:id/web-confirm` | 이미 로그인한 회원의 필수 동의와 연결 확인 |
 | `POST /v1/link-sessions/:id/skin` | 본문 token과 CSRF로 연결 대상의 PNG data URI 조회 |
+| `POST /v1/discord/link-sessions/:id/inspect` | 봇이 발급한 Discord 연동 요청과 대상 계정 조회 |
+| `POST /v1/discord/link-sessions/:id/web-confirm` | 이미 로그인한 활성 회원의 Discord 연결 확인 |
 
 연결 URL은 `/link/:id#token=...`입니다. 토큰은 최초 로드 때 메모리로 읽은 뒤 주소에서 즉시 제거하며, API에는 POST body로만 전송합니다. localStorage·sessionStorage·분석 도구에 기록하지 않습니다. 새로고침으로 메모리의 토큰을 잃으면 게임에서 원래 링크를 다시 열어야 합니다. 웹 확인 후에는 프록시가 현재 게임 세션을 확인해 연결과 이동을 진행합니다. 브라우저는 보이는 동안 inspect를 직렬 조회하며 연결 완료 시 프로필을 갱신합니다. 게임 입장 여부를 추측하거나 게임용 서비스 API를 호출하지 않습니다.
 
@@ -67,7 +69,13 @@ Dockerfile은 정적 빌드 결과를 비특권 nginx 사용자로 8080 포트�
 
 스킨은 API가 제공한 제한된 PNG data URI만 canvas에 그립니다. 외부 URL은 사용하지 않으며 클래식·슬림 및 64×32/64×64 이미지를 처리합니다. 스킨 오류는 로그인이나 계정 연결을 막지 않습니다.
 
-Discord ID는 문자열이며 숫자 형식·uint64 범위를 확인합니다. 입력값은 `self_reported`이고 로그인·회원 자격·서버 권한의 근거가 아닙니다.
+Discord 연동은 디스코드 서버의 봇에서 시작합니다. 호출자에게만 보이는 `/discord/link/:id#token=...` 링크를 열면 API가 확인한 대상 계정을 표시합니다. 동의 후 학교 로그인 시작 요청에 `discordLink: { id, token }`을 전달하고, 학교 인증을 마치면 API가 연결을 처리합니다. 이미 로그인한 활성 회원은 동의와 token을 web-confirm으로 보냅니다. Minecraft 문맥과 Discord 문맥은 경로로 구분하며 한 요청에 섞지 않습니다.
+
+학교 인증과 Discord 연결은 별도 결과입니다. `discord_link_error`는 허용된 코드로만 표시하고 주소에서 지우며, 연결 실패가 유효한 학교 세션을 지우지 않습니다. 만료된 링크에서도 `/me.discordConnection`에 검증된 연결이 있으면 실제 계정·역할 상태를 표시합니다. 예전 `discordReference` 직접 입력 값은 연결 근거로 사용하지 않습니다. 사용자용 ID 입력·변경·삭제 요청은 없으며 연결 변경·해제는 관리자에게 문의합니다.
+
+Discord 회원 역할은 API의 `pending`·`granted`·`revoked`·`failed` 응답을 구분합니다. 계정 연결만으로 역할 지급 성공을 표시하지 않습니다. 대기 상태에서는 보이는 계정·Discord 화면에서 5초 간격으로 최대 2분 동안 상태를 확인하며, 숨긴 탭이나 완료·실패 상태에서는 조회를 중단합니다. 이후에도 새로고침으로 확인할 수 있습니다. 아바타는 이니셜을 사용하고 Discord CDN 요청을 만들지 않습니다.
+
+`/auth/session.features.discordLinking`이 `true`일 때만 신규 연결을 제공합니다. 준비되지 않은 환경에서는 준비 중 안내를 표시하면서 기존 검증된 연결과 역할 상태는 유지합니다. 봇 서비스 토큰이나 Discord API 자격 증명은 브라우저에 전달하지 않습니다.
 
 ## 다음 단계
 

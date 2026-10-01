@@ -325,6 +325,18 @@ label.consent-checkbox { display: flex; align-items: flex-start; gap: 9px; margi
 .connection-confirm { border-top: 1px solid var(--border); }
 .connection-confirm > .primary { width: 100%; }
 .identity-reauth { margin-top: 18px; }
+.discord-identity { display: flex; align-items: center; gap: 12px; margin: 14px 0 18px; min-width: 0; }
+.discord-avatar { width: 44px; height: 44px; border-radius: 12px; background: #edf2fa; color: var(--primary); font-weight: 700; display: grid; place-items: center; flex-shrink: 0; }
+.discord-identity > div { min-width: 0; }
+.discord-identity strong { display: block; font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
+.discord-identity p { font-size: 12px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
+.discord-role { padding: 14px 16px; background: var(--background); border: 1px solid var(--border); border-radius: 8px; margin: 16px 0; }
+.discord-role strong { font-size: 13px; font-weight: 500; }
+.discord-role p { font-size: 12px; color: var(--muted); margin-top: 5px; line-height: 1.8; }
+.role-success strong { color: var(--success); }
+.role-warning strong { color: var(--warning); }
+.discord-confirm { padding-top: 16px; }
+.login-link-context .discord-identity { margin-bottom: 12px; }
 @media (max-width: 600px) {
   .minecraft-account-preview { gap: 16px; }
   .portrait-body { width: 92px; height: 168px; }

@@ -2,6 +2,7 @@ export interface AuthSession {
   authenticated: boolean;
   csrfToken: string;
   authMode: "development" | "university-disabled" | "university";
+  features?: { discordLinking: boolean };
 }
 export interface Profile {
   id: string;
@@ -19,11 +20,7 @@ export interface Profile {
     verifiedUntil: string | null;
   };
   minecraft: { uuid: string; name: string } | null;
-  discordReference: {
-    id: string;
-    verificationStatus: "self_reported";
-    updatedAt: string;
-  } | null;
+  discordConnection: DiscordConnection | null;
   csrfToken: string;
 }
 export interface LinkSession {
@@ -36,6 +33,22 @@ export interface LinkSession {
   gameConfirmed: boolean;
 }
 export type LinkSummary = Pick<LinkSession, "id" | "status" | "expiresAt">;
+export interface DiscordConnection {
+  discordId: string;
+  username: string;
+  displayName: string;
+  linkedAt: string;
+  roleStatus: "pending" | "granted" | "revoked" | "failed";
+  roleUpdatedAt: string | null;
+}
+export interface DiscordLinkSession {
+  id: string;
+  discordId: string;
+  username: string;
+  displayName: string;
+  status: "pending" | "linked";
+  expiresAt: string;
+}
 export interface PrivacyNotice {
   version: string;
   purpose: string;
@@ -89,7 +102,6 @@ const messages: Record<string, string> = {
     "이미 연결된 Minecraft 계정입니다. 운영자에게 문의해 주세요.",
   development_auth_disabled:
     "이 환경에서는 개발용 로그인을 사용할 수 없습니다.",
-  invalid_discord_id: "올바른 숫자 Discord 사용자 ID를 입력해 주세요.",
   too_many_requests: "요청이 많습니다. 잠시 후 다시 시도해 주세요.",
   university_provider_not_configured:
     "학교 로그인을 잠시 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.",
@@ -106,7 +118,7 @@ export class ApiError extends Error {
     public code: string,
   ) {
     super(
-      (Object.hasOwn(messages, code) ? messages[code] : undefined) ??
+      (code.startsWith("discord_") ? discordLinkError(code) : Object.hasOwn(messages, code) ? messages[code] : undefined) ??
         (status === 401
           ? "먼저 로그인해 주세요."
           : status === 403
@@ -166,9 +178,4 @@ export async function api<T>(
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "요청을 처리하지 못했습니다.";
 }
-
-export function validDiscordId(value: string): boolean {
-  return (
-    /^[1-9][0-9]{0,19}$/.test(value) && BigInt(value) <= 18446744073709551615n
-  );
-}
+import { discordLinkError } from "./discord";

@@ -15,6 +15,7 @@ const dist = fileURLToPath(new URL('../dist/', import.meta.url));
 const sessionName = `passport-expiry-regression-${process.pid}`;
 const future = () => new Date(Date.now() + 3_600_000).toISOString();
 let authenticated = true;
+let expireProfile = false;
 let sessionReads = 0;
 let nextLoginCsrf = null;
 const server = http.createServer(async (request, response) => {
@@ -29,17 +30,18 @@ const server = http.createServer(async (request, response) => {
     sessionReads++;
     return json(200, { authenticated, authMode: 'university', csrfToken: authenticated ? 'synthetic-old-csrf' : 'synthetic-new-csrf' });
   }
+  if (url.pathname === '/v1/me' && expireProfile) { expireProfile = false; authenticated = false; return json(401, { code: 'session_required' }); }
   if (url.pathname === '/v1/me') return json(200, {
     id: '00000000-0000-4000-8000-000000000001', displayName: '회귀 테스트 회원', identityProvider: 'usaint',
     department: '가상 학과', academicStatus: 'ENROLLED', universityVerifiedAt: new Date().toISOString(),
     universityVerifiedUntil: future(), accessSuspended: false,
     membership: { status: 'active', effectiveStatus: 'active', roleLabel: '가상 회원', verifiedUntil: future() },
     minecraft: { uuid: '00000000-0000-4000-8000-000000000002', name: 'RegressionOnly' },
-    discordReference: { id: '123456789012345678', verificationStatus: 'self_reported', updatedAt: new Date().toISOString() },
+    discordConnection: null,
     csrfToken: 'synthetic-old-csrf',
   });
   if (url.pathname === '/v1/me/servers') return json(200, { servers: [{ id: 'fixture', label: '회귀 테스트 서버' }] });
-  if (url.pathname === '/v1/me/discord-id' || url.pathname === '/v1/auth/logout') {
+  if (url.pathname === '/v1/auth/logout') {
     authenticated = false;
     return json(401, { code: 'session_required' });
   }
@@ -66,11 +68,11 @@ const inspect = async (expression) => {
   return value;
 };
 
-test('401 mutations remove private portal state and acquire a fresh login CSRF', { timeout: 120_000 }, async (t) => {
+test('401 profile refresh and logout remove private portal state and acquire a fresh login CSRF', { timeout: 120_000 }, async (t) => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
   try {
-    for (const action of ['discord-save', 'logout']) {
+    for (const action of ['profile-refresh', 'logout']) {
       await t.test(action, async () => {
         authenticated = true;
         sessionReads = 0;
@@ -78,10 +80,9 @@ test('401 mutations remove private portal state and acquire a fresh login CSRF',
         await browser('open', origin);
         await browser('wait', '--load', 'networkidle');
         assert.equal(await inspect("document.body.textContent.includes('회귀 테스트 회원')"), true);
-        if (action === 'discord-save') {
-          await browser('find', 'role', 'button', 'click', '--name', 'Discord ID');
-          await browser('find', 'label', '사용자 ID', 'fill', '234567890123456789');
-          await browser('find', 'role', 'button', 'click', '--name', '저장');
+        if (action === 'profile-refresh') {
+          expireProfile = true;
+          await browser('find', 'role', 'button', 'click', '--name', '새로고침');
         } else {
           await browser('find', 'role', 'button', 'click', '--name', '로그아웃');
         }

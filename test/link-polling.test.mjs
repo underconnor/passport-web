@@ -93,3 +93,13 @@ test('cleanup aborts and ignores late completions without firing callbacks', asy
   f.requests[0].resolve('linked'); await settle(); await f.advance(400_000);
   assert.deepEqual(f.results, []); assert.deepEqual(f.errors, []); assert.equal(f.expiries, 0);
 });
+test('role status polling supports a slower interval and bounded stop without claiming completion', async () => {
+  const f = fixture({ intervalMs: 5000, expiresAt: new Date(12000).toISOString() });
+  await f.advance(4999); assert.equal(f.requests.length, 0);
+  await f.advance(1); assert.equal(f.requests.length, 1);
+  f.requests[0].resolve('pending'); await settle();
+  await f.advance(4999); assert.equal(f.requests.length, 1);
+  await f.advance(1); assert.equal(f.requests.length, 2);
+  await f.advance(2000); assert.equal(f.expiries, 1); assert.equal(f.requests[1].signal.aborted, true);
+  assert.deepEqual(f.results, ['pending']);
+});

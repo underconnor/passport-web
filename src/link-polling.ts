@@ -17,12 +17,14 @@ export function pollLink<T>(options: {
   onResult: (result: T) => "continue" | "stop";
   onError: (error: unknown) => "retry" | "stop";
   onExpire: () => void;
+  intervalMs?: number;
   visibility?: Visibility;
   clock?: Clock;
 }): () => void {
   const time = options.clock ?? clock;
   const visibility = options.visibility ?? document;
   const deadline = Date.parse(options.expiresAt);
+  const interval = options.intervalMs ?? 2000;
   let stopped = false;
   let generation = 0;
   let inFlight = false;
@@ -67,7 +69,7 @@ export function pollLink<T>(options: {
     } finally {
       inFlight = false;
       if (controller === request) controller = null;
-      schedule(requestGeneration !== generation ? 0 : Math.min(2000 * 2 ** Math.min(failures, 3), 15000));
+      schedule(requestGeneration !== generation ? 0 : Math.min(interval * 2 ** Math.min(failures, 3), 15000));
     }
   }
   function changed() {
@@ -78,6 +80,6 @@ export function pollLink<T>(options: {
   }
   visibility.addEventListener("visibilitychange", changed);
   expiryTimer = time.set(expire, Math.max(0, deadline - time.now()));
-  schedule(2000);
+  schedule(interval);
   return stop;
 }

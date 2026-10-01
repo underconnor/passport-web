@@ -32,7 +32,7 @@ const server = http.createServer(async (request, response) => {
     academicStatus: 'ENROLLED', universityVerifiedAt: new Date().toISOString(), universityVerifiedUntil: future(), accessSuspended: false,
     membership: { status: 'active', effectiveStatus: 'active', roleLabel: 'Overworld 회원', verifiedUntil: future() },
     minecraft: state.linked ? { uuid: '00000000-0000-4000-8000-000000000002', name: 'SyntheticPlayer' } : null,
-    discordReference: null, csrfToken: 'synthetic-csrf',
+    discordConnection: null, csrfToken: 'synthetic-csrf',
   });
   if (url.pathname === '/v1/me/servers') return json(200, { servers: [{ id: 'fixture_lobby', label: '가상 로비' }, { id: 'fixture_survival', label: '가상 야생 서버' }] });
   if (url.pathname.endsWith('/inspect')) {

@@ -34,7 +34,7 @@ const server = http.createServer(async (request, response) => {
       department: '가상 학과', academicStatus: 'ENROLLED', universityVerifiedAt: new Date().toISOString(), universityVerifiedUntil: future(), accessSuspended: false,
       membership: { status: 'active', effectiveStatus: 'active', roleLabel: '가상 회원', verifiedUntil: future() },
       minecraft: state.linked ? { uuid: '00000000-0000-4000-8000-000000000002', name: 'SyntheticPlayer' } : null,
-      discordReference: { id: '123456789012345678', verificationStatus: 'self_reported', updatedAt: new Date().toISOString() }, csrfToken: 'synthetic-csrf' });
+      discordConnection: null, csrfToken: 'synthetic-csrf' });
   }
   if (url.pathname === '/v1/me/servers') { state.serverReads++; return json(200, { servers: [{ id: 'fixture_lobby', label: '가상 로비' }] }); }
   if (url.pathname.endsWith('/inspect')) {
@@ -77,7 +77,7 @@ const inspect = async (expression) => {
 };
 const until = async (expression) => { for (let n = 0; n < 12; n++) { if (await inspect(expression)) return; } assert.fail('Expected browser state was not observed'); };
 
-test('link completion updates automatically without commands or losing unrelated edits', { timeout: 180_000 }, async (t) => {
+test('link completion updates automatically without commands or leaving the current view', { timeout: 180_000 }, async (t) => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${server.address().port}/link/${linkId}#token=synthetic-link-token`;
   try {
@@ -96,14 +96,13 @@ test('link completion updates automatically without commands or losing unrelated
       await until("document.body.textContent.includes('게임 접속을 확인하고 있어요')");
       assert.equal(await inspect("document.body.textContent.includes('/passport confirm')"), false);
       await browser('screenshot', '/tmp/passport-web-auto-pending.png');
-      await browser('find', 'role', 'button', 'click', '--name', 'Discord ID');
-      await browser('find', 'label', '사용자 ID', 'fill', '234567890123456789');
+      await browser('find', 'role', 'button', 'click', '--name', 'Discord 연결');
       state.gameConnected = true;
-      await until("document.querySelector('#discord-id')?.value === '234567890123456789'");
+      await until("document.querySelector('nav button[aria-current=page]')?.textContent.includes('Discord 연결')");
       // Each browser round-trip allows the real 2s poll to run; wait for profile fetch too.
       for (let n = 0; n < 12 && state.profileReads < 2; n++) await inspect('document.body.textContent.length');
       assert.equal(state.profileReads, 2); assert.equal(state.serverReads, 2); assert.equal(state.authReads, 1);
-      assert.equal(await inspect("document.querySelector('#discord-id').value"), '234567890123456789');
+      assert.equal(await inspect("document.querySelector('nav button[aria-current=page]').textContent.includes('Discord 연결')"), true);
       await browser('find', 'role', 'button', 'click', '--name', 'Minecraft 연결');
       await until("document.body.textContent.includes('계정 연결이 완료되었습니다. 게임에 접속 중이면')");
       const count = state.inspectReads;

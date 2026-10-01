@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useEffectEvent, useState } from "react";
-import type { FormEvent } from "react";
-import { api, ApiError, errorMessage, validDiscordId } from "./api";
-import type { AuthSession, LinkSession, LinkSummary, MinecraftSkin, PrivacyNotice, Profile, Server, UniversityStart } from "./api";
+import { api, ApiError, errorMessage } from "./api";
+import type { AuthSession, DiscordLinkSession, LinkSession, LinkSummary, MinecraftSkin, PrivacyNotice, Profile, Server, UniversityStart } from "./api";
 import { accountAccess, linkCallbackError, schoolLoginDestination, universityCallbackError } from "./auth";
-import { automaticLinkError, invalidLinkPath, linkReference, universityAuthError } from "./link";
+import { automaticDiscordError, automaticLinkError, discordLinkReference, invalidDiscordLinkPath, invalidLinkPath, linkReference, universityAuthError } from "./link";
+import { discordLinkError as discordFailureMessage } from "./discord";
+import { DiscordCard, DiscordTarget } from "./DiscordCard";
 import { pollLink } from "./link-polling";
 import { privacyNotice } from "./privacy";
 import { PrivacyConsent } from "./PrivacyConsent";
@@ -14,7 +15,7 @@ type View = "dashboard" | "minecraft" | "discord" | "servers";
 const navigation: { id: View; label: string; icon: IconName }[] = [
   { id: "dashboard", label: "내 계정", icon: "dashboard" },
   { id: "minecraft", label: "Minecraft 연결", icon: "check" },
-  { id: "discord", label: "Discord ID", icon: "settings" },
+  { id: "discord", label: "Discord 연결", icon: "settings" },
   { id: "servers", label: "접속 서버", icon: "book" },
 ];
 const automaticMoveNotice = "계정 연결이 완료되었습니다. 게임에 접속 중이면 허용된 로비로 자동 이동합니다.";
@@ -31,7 +32,7 @@ const formatDate = (value: string | null) =>
 
 export function App() {
   const [view, setView] = useState<View>(
-    linkReference || invalidLinkPath ? "minecraft" : "dashboard",
+    discordLinkReference || invalidDiscordLinkPath ? "discord" : linkReference || invalidLinkPath ? "minecraft" : "dashboard",
   );
   const [session, setSession] = useState<AuthSession | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -42,10 +43,12 @@ export function App() {
   const [error, setError] = useState("");
   const [authError, setAuthError] = useState(() => universityCallbackError(universityAuthError));
   const [callbackLinkError, setCallbackLinkError] = useState(() => linkCallbackError(automaticLinkError));
+  const [discordLink, setDiscordLink] = useState<DiscordLinkSession | null>(null);
+  const [discordLinkError, setDiscordLinkError] = useState("");
+  const [callbackDiscordError, setCallbackDiscordError] = useState(() => discordFailureMessage(automaticDiscordError));
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [loading, setLoading] = useState(true);
-  const [discordId, setDiscordId] = useState("");
   const [privacy, setPrivacy] = useState<PrivacyNotice | null>(null);
   const [privacyLoading, setPrivacyLoading] = useState(true);
   const [privacyError, setPrivacyError] = useState("");
@@ -87,11 +90,9 @@ export function App() {
       if (signal?.aborted) return;
       setProfile(me);
       setServers(allowed.servers);
-      setDiscordId(me.discordReference?.id ?? "");
     } else {
       setProfile(null);
       setServers([]);
-      setDiscordId("");
     }
     if (linkReference?.token) {
       try {
@@ -113,6 +114,19 @@ export function App() {
         if (!signal?.aborted) {
           setLink(null);
           setLinkError(errorMessage(failure));
+        }
+      }
+    }
+    if (discordLinkReference?.token) {
+      try {
+        const current = await api<DiscordLinkSession>(`/discord/link-sessions/${discordLinkReference.id}/inspect`, {
+          method: "POST", body: { token: discordLinkReference.token }, csrfToken: auth.csrfToken, signal,
+        });
+        if (!signal?.aborted) { setDiscordLink(current); setDiscordLinkError(""); }
+      } catch (failure) {
+        if (!signal?.aborted) {
+          setDiscordLink(null);
+          setDiscordLinkError(failure instanceof ApiError ? discordFailureMessage(failure.code) : errorMessage(failure));
         }
       }
     }
@@ -143,7 +157,8 @@ export function App() {
       if (failure instanceof ApiError && failure.status === 401) {
         setProfile(null);
         setServers([]);
-        setDiscordId("");
+        setDiscordLink(null);
+        setDiscordLinkError("");
         setLink(null);
         setLinkError("");
         setLinkPollError("");
@@ -158,7 +173,8 @@ export function App() {
           return;
         }
       }
-      setError(errorMessage(failure));
+      setError(name === "discord-confirm" && failure instanceof ApiError && failure.status !== 401
+        ? discordFailureMessage(failure.code) : errorMessage(failure));
     } finally {
       setBusy("");
     }
@@ -176,6 +192,11 @@ export function App() {
   const disabled = Boolean(busy) || loading;
   const consentReady = Boolean(privacy && consentAccepted && !privacyLoading);
   const targetLinkId = !missingToken && !linkError && !linkExpired ? link?.id : null;
+  const hasDiscordLink = discordLinkReference !== null || invalidDiscordLinkPath;
+  const discordEnabled = session?.features?.discordLinking === true;
+  const missingDiscordToken = hasDiscordLink && !discordLinkReference?.token;
+  const discordExpired = discordLink ? Date.parse(discordLink.expiresAt) <= Date.now() : false;
+  const targetDiscordId = discordEnabled && !missingDiscordToken && !discordLinkError && !discordExpired ? discordLink?.id : null;
   const minecraftUuid = profile?.minecraft?.uuid;
   useEffect(() => {
     const controller = new AbortController();
@@ -237,9 +258,43 @@ export function App() {
     });
   }, [signedIn, pendingLinkId, linkExpiresAt, csrfToken, loading, busy, linkError]);
 
-  // Link inspections never refetch the profile or overwrite an unfinished Discord edit.
+  const discordPendingId = discordLink?.status === "pending" ? discordLink.id : null;
+  const discordExpiresAt = discordLink?.expiresAt;
+  const discordPollResult = useEffectEvent((current: DiscordLinkSession) => {
+    setDiscordLink((previous) => previous?.status === "linked" ? previous : current);
+    if (current.status === "linked") setCallbackDiscordError("");
+    return current.status === "linked" ? "stop" as const : "continue" as const;
+  });
+  const discordPollError = useEffectEvent((failure: unknown) => {
+    if (failure instanceof ApiError && failure.status === 401) {
+      void perform("session-recovery", async () => { throw failure; });
+      return "stop" as const;
+    }
+    if (failure instanceof ApiError && [403, 404, 409, 410].includes(failure.status)) {
+      setDiscordLinkError(discordFailureMessage(failure.code));
+      return "stop" as const;
+    }
+    return "retry" as const;
+  });
+  const discordPollExpiry = useEffectEvent(() => setDiscordLinkError(discordFailureMessage("link_expired")));
+  useEffect(() => {
+    if (!discordPendingId || !discordExpiresAt || discordLinkError) return;
+    const timer = setTimeout(() => discordPollExpiry(), Math.max(0, Date.parse(discordExpiresAt) - Date.now()));
+    return () => clearTimeout(timer);
+  }, [discordPendingId, discordExpiresAt, discordLinkError]);
+  useEffect(() => {
+    if (!signedIn || !discordPendingId || !discordExpiresAt || !discordLinkReference?.token || !csrfToken || disabled || discordLinkError) return;
+    const token = discordLinkReference.token;
+    return pollLink({
+      expiresAt: discordExpiresAt,
+      inspect: (signal) => api<DiscordLinkSession>(`/discord/link-sessions/${discordPendingId}/inspect`, { method: "POST", body: { token }, csrfToken, signal }),
+      onResult: discordPollResult, onError: discordPollError, onExpire: discordPollExpiry,
+    });
+  }, [signedIn, discordPendingId, discordExpiresAt, csrfToken, disabled, discordLinkError]);
+
+  // Link inspections never repeatedly refetch the profile.
   // Fetch the account once when completion is observed, with logout/unmount cancellation.
-  const completedLinkId = link?.status === "linked" ? link.id : null;
+  const completedLinkId = link?.status === "linked" ? link.id : discordLink?.status === "linked" ? discordLink.id : null;
   const completionError = useEffectEvent((failure: unknown) => {
     if (failure instanceof ApiError && failure.status === 401)
       void perform("session-recovery", async () => { throw failure; });
@@ -259,25 +314,24 @@ export function App() {
     return () => controller.abort();
   }, [signedIn, completedLinkId]);
 
-  function saveDiscord(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setNotice("");
-    if (!validDiscordId(discordId)) {
-      setError("Discord 사용자 ID는 1~20자리 숫자이며 64비트 범위여야 합니다.");
-      return;
-    }
-    void perform("discord", async () => {
-      await api("/me/discord-id", {
-        method: "PUT",
-        body: { id: discordId },
-        csrfToken,
-      });
-      await refresh();
-      setNotice(
-        "Discord ID를 저장했습니다. 소유권은 확인되지 않은 정보입니다.",
-      );
+  const pendingDiscordRole = profile?.discordConnection?.roleStatus === "pending" && (view === "dashboard" || view === "discord")
+    ? profile.discordConnection.discordId : null;
+  const rolePollResult = useEffectEvent(([me, allowed]: [Profile, { servers: Server[] }]) => {
+    setProfile(me); setServers(allowed.servers);
+    return me.discordConnection?.roleStatus === "pending" ? "continue" as const : "stop" as const;
+  });
+  const rolePollError = useEffectEvent((failure: unknown) => {
+    if (failure instanceof ApiError && failure.status === 401) { completionError(failure); return "stop" as const; }
+    return "retry" as const;
+  });
+  useEffect(() => {
+    if (!pendingDiscordRole || disabled) return;
+    return pollLink({
+      expiresAt: new Date(Date.now() + 120_000).toISOString(), intervalMs: 5000,
+      inspect: (signal) => Promise.all([api<Profile>("/me", { signal }), api<{ servers: Server[] }>("/me/servers", { signal })]),
+      onResult: rolePollResult, onError: rolePollError, onExpire: () => {},
     });
-  }
+  }, [pendingDiscordRole, disabled]);
 
   const development = session?.authMode === "development";
   const universityEnabled = session?.authMode === "university";
@@ -290,6 +344,7 @@ export function App() {
         body: {
           consent: { accepted: true, version: privacy.version },
           ...(targetLinkId && linkReference?.token ? { link: { id: targetLinkId, token: linkReference.token } } : {}),
+          ...(targetDiscordId && discordLinkReference?.token ? { discordLink: { id: targetDiscordId, token: discordLinkReference.token } } : {}),
         },
         csrfToken,
       });
@@ -297,6 +352,12 @@ export function App() {
     });
   const alerts = (
     <>
+      {callbackDiscordError && !discordLinkError ? (
+        <div className="notice notice-error" role="alert">
+          <div><strong>Discord 연결을 확인해 주세요</strong><p>{callbackDiscordError}</p></div>
+          <button className="text-button" onClick={() => setCallbackDiscordError("")}>닫기</button>
+        </div>
+      ) : null}
       {callbackLinkError && !linkError ? (
         <div className="notice notice-error" role="alert">
           <div><strong>Minecraft 연결을 확인해 주세요</strong><p>{callbackLinkError}</p></div>
@@ -359,10 +420,10 @@ export function App() {
         <main className="login-shell">
           <section className="login-card" aria-busy={loading}>
             <Brand large />
-            <h1>{targetLinkId ? "내 Minecraft 계정 연결" : "Overworld에 오신 것을 환영해요"}</h1>
+            <h1>{targetDiscordId ? "내 Discord 계정 연결" : targetLinkId ? "내 Minecraft 계정 연결" : "Overworld에 오신 것을 환영해요"}</h1>
             <p className="login-description">
-              {targetLinkId ? "아래 계정이 본인 계정인지 확인해 주세요." : "학교 계정으로 회원 자격을 확인하고"}
-              <br />{targetLinkId ? "학교 인증을 마치면 게임에 자동으로 연결됩니다." : "Minecraft와 Discord 정보를 관리하세요."}
+              {targetLinkId || targetDiscordId ? "아래 계정이 본인 계정인지 확인해 주세요." : "학교 계정으로 회원 자격을 확인하고"}
+              <br />{targetDiscordId ? "학교 인증 후 디스코드 회원 역할을 반영합니다." : targetLinkId ? "학교 인증을 마치면 게임에 자동으로 연결됩니다." : "Minecraft와 Discord 계정을 관리하세요."}
             </p>
             {loading ? (
               <div className="login-loading" role="status">
@@ -371,6 +432,16 @@ export function App() {
               </div>
             ) : (
               <>
+                {hasDiscordLink ? <div className="login-link-context">
+                  {missingDiscordToken || discordLinkError ? <>
+                    <strong>새 Discord 연동 링크가 필요해요</strong>
+                    <p>{discordLinkError || "디스코드 서버에서 봇의 ‘연동하기’ 버튼을 다시 눌러 주세요."}</p>
+                    <a className="recovery-link" href="/">내 계정 페이지로 이동</a>
+                  </> : discordLink ? <>
+                    <small>연결할 Discord 계정</small><DiscordTarget account={discordLink} />
+                    <p className="target-reminder">본인 계정이 아니라면 진행하지 마세요. 계정 변경·해제는 관리자에게 문의해야 합니다.</p>
+                  </> : <p>Discord 연동 요청을 확인하고 있습니다.</p>}
+                </div> : null}
                 {hasLink ? (
                   <div className="login-link-context">
                     {missingToken || linkError ? (
@@ -419,8 +490,8 @@ export function App() {
                   ) : universityEnabled ? (
                     <>
                       <PrivacyConsent notice={privacy} accepted={consentAccepted} onChange={setConsentAccepted} loading={privacyLoading} error={privacyError} onRetry={() => void loadPrivacy()} disabled={disabled} />
-                      <button className="primary full" disabled={disabled || !consentReady || (hasLink && !targetLinkId)} onClick={schoolLogin}>
-                        {busy === "university" ? "학교 로그인으로 이동 중…" : targetLinkId ? "동의하고 학교 계정으로 연결" : "동의하고 학교 계정으로 로그인"}
+                      <button className="primary full" disabled={disabled || !consentReady || (hasLink && !targetLinkId) || (hasDiscordLink && !targetDiscordId)} onClick={schoolLogin}>
+                        {busy === "university" ? "학교 로그인으로 이동 중…" : targetLinkId || targetDiscordId ? "동의하고 학교 계정으로 연결" : "동의하고 학교 계정으로 로그인"}
                         <Icon name="arrow" />
                       </button>
                       <p className="helper login-helper">
@@ -634,61 +705,21 @@ export function App() {
     </section>
   );
 
-  const discordCard = (
-    <section className="panel" aria-labelledby="discord-heading">
-      <div className="panel-head">
-        <h2 id="discord-heading">Discord 사용자 ID</h2>
-        <span className="status-label">직접 입력 · 소유권 미확인</span>
-      </div>
-      <p className="helper">
-        소모임에서 알아볼 수 있도록 숫자 사용자 ID를 남겨 주세요. 서버 입장
-        권한에는 영향을 주지 않습니다.
-      </p>
-      <form onSubmit={saveDiscord}>
-        <label htmlFor="discord-id">사용자 ID</label>
-        <div className="input-row">
-          <input
-            id="discord-id"
-            value={discordId}
-            onChange={(event) => setDiscordId(event.target.value)}
-            inputMode="numeric"
-            pattern="[1-9][0-9]{0,19}"
-            maxLength={20}
-            placeholder="예: 123456789012345678"
-            autoComplete="off"
-            disabled={disabled}
-            aria-describedby="discord-help"
-          />
-          <button className="primary" disabled={disabled || !discordId}>
-            저장
-          </button>
-        </div>
-        <p id="discord-help" className="helper field-help">
-          Discord 개발자 모드에서 ‘사용자 ID 복사’로 확인할 수 있습니다.
-        </p>
-      </form>
-      {profile.discordReference ? (
-        <div className="saved-info">
-          <small>
-            저장됨 · {formatDate(profile.discordReference.updatedAt)}
-          </small>
-          <button
-            className="text-button danger"
-            disabled={disabled}
-            onClick={() =>
-              void perform("delete-discord", async () => {
-                await api("/me/discord-id", { method: "DELETE", csrfToken });
-                await refresh();
-                setNotice("Discord ID를 삭제했습니다.");
-              })
-            }
-          >
-            ID 삭제
-          </button>
-        </div>
-      ) : null}
-    </section>
-  );
+  const discordCard = <DiscordCard
+    connection={profile.discordConnection} link={discordLink} linkError={discordLinkError}
+    missingToken={missingDiscordToken} enabled={discordEnabled} active={active} schoolExpired={Boolean(access?.schoolExpired)} disabled={disabled}
+    consent={<PrivacyConsent notice={privacy} accepted={consentAccepted} onChange={setConsentAccepted} loading={privacyLoading} error={privacyError} onRetry={() => void loadPrivacy()} disabled={disabled} />}
+    consentReady={consentReady}
+    onConfirm={() => void perform("discord-confirm", async () => {
+      if (!privacy || !consentReady || !discordLink || !discordLinkReference?.token) throw new ApiError(400, "consent_required");
+      const result = await api<LinkSummary>(`/discord/link-sessions/${discordLink.id}/web-confirm`, {
+        method: "POST", body: { token: discordLinkReference.token, consent: { accepted: true, version: privacy.version } }, csrfToken,
+      });
+      setDiscordLink((current) => current?.id === result.id ? { ...current, ...result } : current);
+      setCallbackDiscordError("");
+    })}
+    onAccount={() => setView("dashboard")}
+  />;
 
   const serversCard = (
     <section className="panel" aria-labelledby="servers-heading">
@@ -743,7 +774,7 @@ export function App() {
               : view === "minecraft"
                 ? "본인 계정을 확인하면 게임 접속을 확인해 자동으로 연결합니다."
                 : view === "discord"
-                  ? "소모임에서 사용할 Discord 사용자 ID를 관리합니다."
+                  ? "학교 계정과 연결된 Discord 계정과 회원 역할을 확인합니다."
                   : "회원에게 허용된 서버를 확인합니다."}
           </p>
         </div>
@@ -777,8 +808,8 @@ export function App() {
                 <small>{development ? "개발용 신원" : access?.schoolExpired ? "갱신 필요" : "u-SAINT 연동"}</small>
               </div>
               <div className="support-row">
-                <span>Discord ID</span>
-                <small>직접 입력</small>
+                <span>Discord 연결</span>
+                <small>디스코드 봇에서 시작</small>
               </div>
             </section>
           </div>
