@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useState } from "react";
 import type { FormEvent } from "react";
 import { api, ApiError, errorMessage, validDiscordId } from "./api";
-import type { AuthSession, LinkSession, Profile, Server, UniversityStart } from "./api";
+import type { AuthSession, LinkSession, LinkSummary, Profile, Server, UniversityStart } from "./api";
 import { accountAccess, schoolLoginDestination, universityCallbackError } from "./auth";
 import { invalidLinkPath, linkReference, universityAuthError } from "./link";
+import { pollLink } from "./link-polling";
 import { AppShell, Brand, DevelopmentStrip, Icon } from "./ui";
 import type { IconName } from "./ui";
 type View = "dashboard" | "minecraft" | "discord" | "servers";
@@ -13,6 +14,7 @@ const navigation: { id: View; label: string; icon: IconName }[] = [
   { id: "discord", label: "Discord ID", icon: "settings" },
   { id: "servers", label: "접속 서버", icon: "book" },
 ];
+const automaticMoveNotice = "계정 연결이 완료되었습니다. 게임에 접속 중이면 허용된 로비로 자동 이동합니다.";
 
 const formatDate = (value: string | null) =>
   value
@@ -33,6 +35,7 @@ export function App() {
   const [servers, setServers] = useState<Server[]>([]);
   const [link, setLink] = useState<LinkSession | null>(null);
   const [linkError, setLinkError] = useState("");
+  const [linkPollError, setLinkPollError] = useState("");
   const [error, setError] = useState("");
   const [authError, setAuthError] = useState(() => universityCallbackError(universityAuthError));
   const [notice, setNotice] = useState("");
@@ -73,6 +76,7 @@ export function App() {
         if (!signal?.aborted) {
           setLink(current);
           setLinkError("");
+          setLinkPollError("");
         }
       } catch (failure) {
         if (!signal?.aborted) {
@@ -108,6 +112,7 @@ export function App() {
         setDiscordId("");
         setLink(null);
         setLinkError("");
+        setLinkPollError("");
         setSession(null);
         setView("dashboard");
         try {
@@ -133,6 +138,64 @@ export function App() {
     ? new Date(link.expiresAt).getTime() <= Date.now()
     : false;
   const disabled = Boolean(busy) || loading;
+
+  const pollingResult = useEffectEvent((current: LinkSession) => {
+    setLink((previous) => previous?.id === current.id && previous.status === "linked" ? previous : current);
+    setLinkPollError("");
+    return current.status === "linked" ? "stop" as const : "continue" as const;
+  });
+  const pollingError = useEffectEvent((failure: unknown) => {
+    if (failure instanceof ApiError && failure.status === 401) {
+      void perform("session-recovery", async () => { throw failure; });
+      return "stop" as const;
+    }
+    if (failure instanceof ApiError && [403, 404, 409, 410].includes(failure.status)) {
+      setLinkError(errorMessage(failure));
+      return "stop" as const;
+    }
+    setLinkPollError(`${errorMessage(failure)} 연결 상태를 자동으로 다시 확인합니다.`);
+    return "retry" as const;
+  });
+  const pollingExpiry = useEffectEvent(() => {
+    setLinkError("연결 요청이 만료되었습니다. 게임에서 /passport 로 새 링크를 받아 주세요.");
+  });
+  const pendingLinkId = link?.status === "pending" ? link.id : null;
+  const linkExpiresAt = link?.expiresAt;
+  useEffect(() => {
+    if (!signedIn || !pendingLinkId || !linkExpiresAt || !linkReference?.token || !csrfToken || loading || busy || linkError) return;
+    const token = linkReference.token;
+    return pollLink({
+      expiresAt: linkExpiresAt,
+      inspect: (signal) => api<LinkSession>(`/link-sessions/${pendingLinkId}/inspect`, {
+        method: "POST", body: { token }, csrfToken, signal,
+      }),
+      onResult: pollingResult,
+      onError: pollingError,
+      onExpire: pollingExpiry,
+    });
+  }, [signedIn, pendingLinkId, linkExpiresAt, csrfToken, loading, busy, linkError]);
+
+  // Link inspections never refetch the profile or overwrite an unfinished Discord edit.
+  // Fetch the account once when completion is observed, with logout/unmount cancellation.
+  const completedLinkId = link?.status === "linked" ? link.id : null;
+  const completionError = useEffectEvent((failure: unknown) => {
+    if (failure instanceof ApiError && failure.status === 401)
+      void perform("session-recovery", async () => { throw failure; });
+    else setError(errorMessage(failure));
+  });
+  useEffect(() => {
+    if (!signedIn || !completedLinkId) return;
+    const controller = new AbortController();
+    Promise.all([
+      api<Profile>("/me", { signal: controller.signal }),
+      api<{ servers: Server[] }>("/me/servers", { signal: controller.signal }),
+    ]).then(([me, allowed]) => {
+      if (!controller.signal.aborted) { setProfile(me); setServers(allowed.servers); }
+    }).catch((failure) => {
+      if (!controller.signal.aborted) completionError(failure);
+    });
+    return () => controller.abort();
+  }, [signedIn, completedLinkId]);
 
   function saveDiscord(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -251,7 +314,7 @@ export function App() {
                     ) : link ? (
                       <>
                         <strong>{link.minecraftName} 계정 연결</strong>
-                        <p>로그인한 뒤 웹과 게임에서 계정을 확인합니다.</p>
+                        <p>로그인한 뒤 본인 계정인지 확인하면 게임 접속을 확인해 연결합니다.</p>
                       </>
                     ) : (
                       <p>연결 요청을 확인하고 있습니다.</p>
@@ -365,13 +428,13 @@ export function App() {
           {profile.minecraft || link?.status === "linked"
             ? "연결됨"
             : link?.webConfirmed
-              ? "게임 확인 대기"
+              ? "게임 접속 확인 중"
               : "연결 대기"}
         </span>
       </div>
       {missingToken || linkError ? (
         <div className="empty-state">
-          <h3>새 연결 링크가 필요해요</h3>
+          <h3>연결 상태를 확인해 주세요</h3>
           <p>
             {linkError ||
               "확인 정보가 없습니다. 게임 채팅에서 원래 링크를 다시 열어 주세요."}
@@ -390,22 +453,21 @@ export function App() {
             </div>
           </div>
           {link.status === "linked" ? (
-            <p className="helper success-text">
-              계정 연결이 완료되었습니다. 게임에서 서버를 선택해 주세요.
+            <p className="helper success-text" role="status">
+              {automaticMoveNotice}
             </p>
           ) : linkExpired ? (
             <p className="helper warning">
-              연결 요청이 만료되었습니다. 게임에서 새 링크를 받아 주세요.
+              연결 요청이 만료되었습니다. 게임에서 /passport 로 새 링크를 받아 주세요.
             </p>
           ) : !active ? (
             <p className="helper warning">
               {development ? "회원 자격이 확인되지 않았습니다. 운영자에게 명부 확인을 요청해 주세요." : access?.message}
             </p>
           ) : link.webConfirmed ? (
-            <div className="command-block">
-              <p>같은 Minecraft 계정으로 채팅에 입력해 주세요.</p>
-              <code>/passport confirm</code>
-              <small>게임에서 확인하면 연결이 완료됩니다.</small>
+            <div className="command-block" role="status">
+              <p>웹 확인을 완료했습니다. 게임 접속을 확인하고 있어요.</p>
+              <small>게임 접속을 유지해 주세요. 연결이 완료되면 허용된 로비로 자동 이동합니다.</small>
             </div>
           ) : (
             <div className="connection-confirm">
@@ -417,15 +479,16 @@ export function App() {
                 disabled={disabled}
                 onClick={() =>
                   void perform("confirm", async () => {
-                    await api(`/link-sessions/${link.id}/web-confirm`, {
+                    const result = await api<LinkSummary>(`/link-sessions/${link.id}/web-confirm`, {
                       method: "POST",
                       body: { token: linkReference?.token },
                       csrfToken,
                     });
-                    await refresh();
-                    setNotice(
-                      "웹 확인이 완료되었습니다. 게임에서 /passport confirm을 입력해 주세요.",
-                    );
+                    setLink((current) => current?.id === result.id ? {
+                      ...current, ...result, webConfirmed: true,
+                      gameConfirmed: result.status === "linked" || current.gameConfirmed,
+                    } : current);
+                    setLinkPollError("");
                   })
                 }
               >
@@ -434,6 +497,8 @@ export function App() {
               </button>
             </div>
           )}
+          {linkPollError ? <p className="helper warning" role="status">{linkPollError}</p> : null}
+          {link.status === "pending" && !linkExpired ? <p className="helper">연결 상태를 자동으로 확인합니다.</p> : null}
           <button
             className="text-button refresh-link"
             disabled={disabled}
@@ -477,8 +542,8 @@ export function App() {
             <li>
               <span>3</span>
               <div>
-                <strong>게임 확인</strong>
-                <small>/passport confirm</small>
+                <strong>자동 연결</strong>
+                <small>접속 확인 후 로비로 이동</small>
               </div>
             </li>
           </ol>
@@ -595,7 +660,7 @@ export function App() {
             {view === "dashboard"
               ? "회원 상태와 연결된 계정을 확인하세요."
               : view === "minecraft"
-                ? "웹과 게임에서 확인해 계정을 안전하게 연결합니다."
+                ? "본인 계정을 확인하면 게임 접속을 확인해 자동으로 연결합니다."
                 : view === "discord"
                   ? "소모임에서 사용할 Discord 사용자 ID를 관리합니다."
                   : "회원에게 허용된 서버를 확인합니다."}

@@ -35,6 +35,7 @@ export interface LinkSession {
   webConfirmed: boolean;
   gameConfirmed: boolean;
 }
+export type LinkSummary = Pick<LinkSession, "id" | "status" | "expiresAt">;
 export interface Server {
   id: string;
   label: string;
