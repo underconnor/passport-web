@@ -804,7 +804,7 @@ export function App() {
         await api("/me/privacy/consent", { method: "POST", body: { consent: { accepted: true, version } }, csrfToken });
         await refresh(); setNotice("변경된 개인정보 안내에 동의했습니다. 게임 기능이 순서대로 반영됩니다.");
       })} /> : null}
-      {view === "stats" ? <StatsView endpoint="/me/stats" title="주요 지표" onError={failure => { if (failure instanceof ApiError && failure.status === 401) void perform("stats-session", async () => { throw failure; }); }} /> : view === "dashboard" ? (
+      {view === "stats" ? <StatsView csrfToken={csrfToken} endpoint="/me/stats" title="주요 지표" onError={failure => { if (failure instanceof ApiError && failure.status === 401) void perform("stats-session", async () => { throw failure; }); }} /> : view === "dashboard" ? (
         <>
         <MembershipCard profile={profile} development={development} />
         <div className="dashboard-grid">

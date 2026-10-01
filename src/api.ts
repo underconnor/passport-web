@@ -85,6 +85,7 @@ export interface UniversityStart {
 }
 
 const messages: Record<string, string> = {
+  statistics_settings_changed: "다른 곳에서 수집 설정이 변경되었습니다. 최신 설정을 확인한 뒤 다시 시도해 주세요.",
   consent_required: "개인정보 안내를 읽고 동의를 선택해 주세요.",
   consent_version_mismatch: "개인정보 안내가 변경되었습니다. 최신 내용을 다시 확인하고 동의해 주세요.",
   privacy_version_mismatch: "개인정보 안내가 변경되었습니다. 최신 내용을 다시 확인하고 동의해 주세요.",

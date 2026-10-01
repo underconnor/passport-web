@@ -1206,3 +1206,25 @@ input:disabled {
 }
 
 @media(max-width:1100px) { .stats-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+.stats-metric-label { display: flex; align-items: center; gap: 9px; word-break: keep-all; }
+.metric-icon { flex-shrink: 0; color: #65748b; }
+.stats-metric > strong { word-break: keep-all; line-height: 1.3; }
+.stats-metric > small { line-height: 1.5; word-break: keep-all; }
+.stats-scope-note { margin: 0 0 16px; color: var(--muted); font-size: 12px; line-height: 1.7; word-break: keep-all; }
+.stats-disabled h3 { font-size: 16px; font-weight: 600; }
+.stats-disabled p { color: var(--muted); margin-top: 8px; font-size: 13px; line-height: 1.7; word-break: keep-all; }
+
+.stats-collection { margin-bottom: 20px; }
+.stats-collection-row { display: flex; align-items: center; gap: 18px; justify-content: space-between; }
+.stats-collection h3 { font-size: 14px; font-weight: 600; }
+.stats-collection p { margin-top: 7px; color: var(--muted); font-size: 12px; line-height: 1.7; word-break: keep-all; }
+button.collection-switch { display: inline-flex; align-items: center; gap: 9px; border: 0; padding: 4px; min-height: 36px; flex-shrink: 0; background: transparent; font-size: 12px; }
+.switch-track { display: inline-flex; align-items: center; width: 36px; height: 22px; border-radius: 15px; padding: 3px; background: #9ca5b2; }
+.switch-track > span { width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+.is-enabled .switch-track { background: var(--primary); justify-content: flex-end; }
+.stats-setting-help, .account-stats-note { color: var(--muted); font-size: 12px; line-height: 1.7; margin-top: 16px; word-break: keep-all; }
+.stats-setting-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.stats-setting-error button { flex-shrink: 0; }
+.account-stat .metric-icon { width: 16px; height: 16px; }
+@media(max-width:600px) { .stats-setting-error { flex-wrap: wrap; } }

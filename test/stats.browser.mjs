@@ -12,7 +12,7 @@ const run = promisify(execFile), dist=fileURLToPath(new URL('../dist/',import.me
 const totals={playSeconds:7320,blocksBroken:5210,blocksPlaced:890,damageTakenMilli:125500,deaths:12,mobKills:302,playerKills:7,distanceCm:1250500};
 const first={playSeconds:3660,blocksBroken:4100,blocksPlaced:450,damageTakenMilli:60500,deaths:8,mobKills:203,playerKills:2,distanceCm:54320};
 let state;
-const reset=()=>{state={authenticated:true,studentId:'20991234',accepted:true,available:true,online:true,statsError:false,consents:[],reads:[],hold:false,release:null};};
+const reset=()=>{state={authenticated:true,studentId:'20991234',accepted:true,available:true,online:true,statsError:false,consents:[],reads:[],hold:false,release:null,settings:{enabled:true,revision:"1",consentGranted:true},settingWrites:[],settingsError:null,excluded:false};};
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://127.0.0.1');state.reads.push(url.pathname);
   const json=(code,data)=>{res.writeHead(code,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
@@ -22,10 +22,14 @@ const server=http.createServer(async(req,res)=>{
   if(url.pathname==='/v1/me')return json(200,{id:'00000000-0000-4000-8000-000000000001',displayName:'합성 사용자',studentId:state.studentId,identityProvider:'usaint',department:'가상 학과',academicStatus:'ENROLLED',universityVerifiedAt:new Date().toISOString(),universityVerifiedUntil:'2027-02-28T15:00:00.000Z',accessSuspended:false,membership:{status:'active',effectiveStatus:'active',roleLabel:'가상 회원',verifiedUntil:new Date(Date.now()+86400000).toISOString()},minecraft:null,discordConnection:null,csrfToken:'synthetic-csrf',privacyConsent:{version:privacy.version,accepted:state.accepted}});
   if(url.pathname==='/v1/me/servers')return json(200,{servers:[]});
   if(url.pathname==='/v1/me/privacy/consent'){const input=await body();state.consents.push(input);assert.equal(req.headers['x-csrf-token'],'synthetic-csrf');state.accepted=true;return json(200,{updated:true});}
+  if(url.pathname==='/v1/me/statistics-settings'){
+    if(req.method==='PUT') { const input=await body();state.settingWrites.push({input,csrf:req.headers['x-csrf-token']});if(state.settingsError)return json(409,{code:state.settingsError});if(input.expectedRevision!==state.settings.revision)return json(409,{code:'statistics_settings_changed'});state.settings={...state.settings,enabled:input.enabled,revision:String(Number(state.settings.revision)+1)}; }
+    return json(200,state.settings);
+  }
   if(url.pathname==='/v1/me/stats'){
     if(url.pathname==='/v1/me/stats'&&!state.authenticated)return json(401,{code:'session_required'});
     if(state.statsError)return json(503,{code:'synthetic-sensitive-error'});
-    const response={available:state.available,totals:{...totals},servers:[{serverId:'first',label:'합성 건축 서버',...first,onlinePlayerCount:state.online?1:0},{serverId:'second',label:'합성 야생 서버',...first,onlinePlayerCount:0}],presence:{online:state.online,serverId:state.online?'first':null,serverLabel:state.online?'합성 건축 서버':null,lastSeenAt:new Date().toISOString()},unexpectedPrivateField:'DO-NOT-RENDER-IDENTITY'};
+    const response={available:state.available,collection:{enabled:state.settings.enabled,consentGranted:state.settings.consentGranted,excludedServerIds:state.excluded?["first"]:[],historyRetained:true},totals:{...totals},servers:[{serverId:'first',label:'합성 건축 서버',collectionEnabled:!state.excluded,...first,onlinePlayerCount:state.online?1:0},{serverId:'second',label:'합성 야생 서버',collectionEnabled:true,...first,onlinePlayerCount:0}],presence:{online:state.online,serverId:state.online?'first':null,serverLabel:state.online?'합성 건축 서버':null,lastSeenAt:new Date().toISOString()},unexpectedPrivateField:'DO-NOT-RENDER-IDENTITY'};
     if(state.legacy) for(const counters of [response.totals,...response.servers]) { delete counters.playerKills; delete counters.distanceCm; }
     if(state.hold){state.hold=false;state.release=()=>json(200,response);return;}
     return json(200,response);
@@ -107,7 +111,21 @@ test('private play statistics with explicit renewed consent',{timeout:240000},as
    await browser('screenshot','/tmp/passport-user-stats-desktop.png');await browser('select','.stats-scope select','first');assert.equal(await inspect('document.querySelector(".stats-metric strong").textContent'),'1시간 1분');
    assert.deepEqual(await inspect('[...document.querySelectorAll(".stats-metric")].slice(-2).map(el=>el.querySelector("strong").textContent)'),['2','543 m']);
    await browser('set','viewport','390','844');assert.equal(await inspect('document.documentElement.scrollWidth <= innerWidth'),true);await browser('screenshot','/tmp/passport-user-stats-mobile.png','--full');
-   state.legacy=true;await click('기록 새로고침');await until('document.querySelectorAll(".stats-metric").length === 8');assert.deepEqual(await inspect('[...document.querySelectorAll(".stats-metric")].slice(-2).map(el=>el.querySelector("strong").textContent)'),['0','0 m']);
+   state.legacy=true;await click('기록 새로고침');await until('document.querySelector(".stats-metric:last-child strong")?.textContent === "0 m"');assert.deepEqual(await inspect('[...document.querySelectorAll(".stats-metric")].slice(-2).map(el=>el.querySelector("strong").textContent)'),['0','0 m']);
+  });
+  await t.test('personal collection switch preserves history and enforces revision, CSRF and consent',async()=>{
+   reset();await open(origin+'/me/stats');await until('document.querySelector("[role=switch]")?.disabled===false');
+   const before=await inspect('[...document.querySelectorAll(".stats-metric strong")].map(el=>el.textContent)');await browser('click','[role=switch]');await until('document.querySelector("[role=switch]")?.getAttribute("aria-checked")==="false"');await until('document.querySelectorAll(".stats-metric").length===8');
+   assert.deepEqual(state.settingWrites[0],{input:{enabled:false,expectedRevision:'1'},csrf:'synthetic-csrf'});assert.deepEqual(await inspect('[...document.querySelectorAll(".stats-metric strong")].map(el=>el.textContent)'),before);
+   state.settingsError='statistics_settings_changed';await browser('click','[role=switch]');await until('document.body.textContent.includes("다른 곳에서 수집 설정이 변경되었습니다")');assert.equal(await inspect('document.querySelector("[role=switch]").disabled'),true);
+   state.settingsError=null;state.settings={...state.settings,enabled:true,revision:'3'};await click('최신 설정 확인');await until('document.querySelector("[role=switch]")?.disabled===false');assert.equal(await inspect('document.querySelector("[role=switch]").getAttribute("aria-checked")'),'true');
+   reset();state.settings={enabled:false,revision:'4',consentGranted:false};await open(origin+'/me/stats');await until('Boolean(document.querySelector("[role=switch]"))');assert.equal(await inspect('document.querySelector("[role=switch]").disabled'),true);assert.equal(state.settingWrites.length,0);
+   assert.equal(await inspect('[...document.querySelectorAll("button")].some(button=>button.textContent.includes("초기화"))'),false);
+  });
+  await t.test('excluded server never shows zero metrics as collected history and user ON cannot override it',async()=>{
+   reset();state.excluded=true;await open(origin+'/me/stats');await until('document.querySelectorAll(".stats-metric").length===8');assert.equal(await inspect('document.querySelector("[role=switch]").getAttribute("aria-checked")'),'true');
+   assert.equal(await inspect('document.querySelector(".stats-scope-note").textContent.includes("전체 합계에서 제외")'),true);await browser('select','.stats-scope select','first');assert.equal(await inspect('document.querySelectorAll(".stats-metric").length'),0);assert.equal(await inspect('document.querySelector(".stats-disabled").textContent.includes("기존 기록은 보관")'),true);
+   await browser('set','viewport','390','844');assert.equal(await inspect('document.documentElement.scrollWidth<=innerWidth'),true);await browser('screenshot','/tmp/passport-stats-disabled-mobile.png','--full');await browser('select','.stats-scope select','second');assert.equal(await inspect('document.querySelectorAll(".stats-metric").length'),8);assert.equal(state.settingWrites.length,0);
   });
   await t.test('personal deep link loads only owner endpoint and failed refresh removes old metrics',async()=>{
    reset();await open(origin+'/me/stats');assert.equal(state.reads.includes('/v1/me/stats'),true);assert.equal(state.reads.includes('/v1/public/stats'),false);
