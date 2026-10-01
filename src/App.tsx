@@ -807,13 +807,13 @@ export function App() {
         <>
         <MembershipCard profile={profile} development={development} />
         <div className="dashboard-grid">
-          <div className="stack dashboard-main" tabIndex={0} aria-label="계정 연결과 서버">
+          <div className="stack dashboard-main" aria-label="계정 연결과 서버">
             <AccountStats onDetails={() => setView("stats")} onError={failure => { if (failure instanceof ApiError && failure.status === 401) void perform("stats-session", async () => { throw failure; }); }} />
             {minecraftCard}
             {serversCard}
             {discordCard}
           </div>
-          <aside className="stack dashboard-aside" tabIndex={0} aria-label="학교 계정 정보">
+          <aside className="stack dashboard-aside" aria-label="학교 계정 정보">
             {identityCard}
           </aside>
         </div>

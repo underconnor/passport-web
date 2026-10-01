@@ -4,7 +4,7 @@ export const privacy = {
   version: '2026-10-01.5',
   purpose: '가상 서비스 회원 확인과 Minecraft·Discord 계정 연결을 위한 테스트 안내입니다.',
   items: ['학교가 제공한 회원 식별 정보', 'Minecraft UUID와 닉네임', '봇이 확인한 Discord 계정 정보'],
-  retention: '이 문구는 실제 보관 정책이 아닌 합성 테스트 안내입니다.',
+  retention: '폐기 시까지',
   withdrawal: '운영자에게 철회·삭제를 요청하는 합성 테스트 안내입니다.',
 };
 

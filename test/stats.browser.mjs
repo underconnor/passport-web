@@ -42,7 +42,7 @@ const open=async url=>{await browser('open','about:blank');await browser('open',
 test('private play statistics with explicit renewed consent',{timeout:240000},async t=>{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin=`http://127.0.0.1:${server.address().port}`;
  try{
-  await t.test('account home shows verified identity, compact records and independently scrolling columns',async()=>{
+  await t.test('account home uses natural page scrolling with sticky sidebars and no nested scroll panes',async()=>{
    reset();await open(origin);await browser('set','viewport','1440','900');
    assert.equal(await inspect('document.querySelectorAll(".account-stat").length'),4);
    assert.equal(await inspect('document.querySelector(".account-stat strong").textContent'),'2시간 2분');
@@ -52,19 +52,30 @@ test('private play statistics with explicit renewed consent',{timeout:240000},as
    assert.equal(await inspect('document.querySelector(".sidebar-profile button") === null'),true);
    assert.equal(await inspect('document.querySelector(".topbar .header-logout").textContent.trim()'),'로그아웃');
    assert.equal(await inspect('document.querySelector(".support-panel") === null'),true);
-   assert.equal(await inspect('getComputedStyle(document.querySelector(".dashboard-main")).overflowY'),'auto');
-   assert.equal(await inspect('getComputedStyle(document.querySelector(".dashboard-aside")).overflowY'),'auto');
-   const before=await inspect('document.querySelector(".dashboard-aside").getBoundingClientRect().top');
-   await browser('eval','document.querySelector(".dashboard-main").scrollTop=500');
-   assert.ok(await inspect('document.querySelector(".dashboard-main").scrollTop > 0'));
-   assert.equal(await inspect('document.querySelector(".dashboard-aside").getBoundingClientRect().top'),before);
-   assert.equal(await inspect('document.querySelector(".dashboard-aside").scrollTop'),0);
-   await browser('eval','document.querySelector(".dashboard-main").scrollTop=0');
-   await browser('screenshot','/tmp/passport-account-revision-desktop.png');
+   assert.equal(await inspect('getComputedStyle(document.querySelector(".dashboard-main")).overflowY'),'visible');
+   assert.equal(await inspect('getComputedStyle(document.querySelector(".dashboard-aside")).overflowY'),'visible');
+   assert.equal(await inspect('document.querySelector(".dashboard-main").hasAttribute("tabindex") || document.querySelector(".dashboard-aside").hasAttribute("tabindex")'),false);
+   assert.equal(await inspect('document.documentElement.scrollWidth <= innerWidth'),true);
+   await browser('screenshot','/tmp/passport-natural-scroll-desktop-top.png');
+   await browser('eval','window.scrollTo(0,350)');
+   await until('window.scrollY >= 350');
+   assert.equal(await inspect('document.querySelector(".app-sidebar").getBoundingClientRect().top'),0);
+   assert.equal(await inspect('document.querySelector(".dashboard-aside").getBoundingClientRect().top'),24);
+   const mainTop=await inspect('document.querySelector(".dashboard-main").getBoundingClientRect().top');
+   await browser('eval','window.scrollTo(0,400)');
+   await until('window.scrollY >= 400');
+   assert.equal(await inspect('document.querySelector(".app-sidebar").getBoundingClientRect().top'),0);
+   assert.equal(await inspect('document.querySelector(".dashboard-aside").getBoundingClientRect().top'),24);
+   assert.ok(await inspect(`document.querySelector(".dashboard-main").getBoundingClientRect().top < ${mainTop}`));
+   assert.equal(await inspect('document.querySelector(".dashboard-main").scrollTop + document.querySelector(".dashboard-aside").scrollTop'),0);
+   assert.equal(await inspect('document.querySelector(".sidebar-brand").getBoundingClientRect().top'),26);
+   await browser('eval','new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+   await browser('screenshot','/tmp/passport-natural-scroll-desktop-scrolled.png');
+   await browser('eval','window.scrollTo(0,0)');
    await browser('set','viewport','390','844');
    assert.equal(await inspect('document.documentElement.scrollWidth <= innerWidth'),true);
-   assert.equal(await inspect('getComputedStyle(document.querySelector(".dashboard-main")).overflowY'),'visible');
-   await browser('screenshot','/tmp/passport-account-revision-mobile.png');
+   assert.equal(await inspect('getComputedStyle(document.querySelector(".dashboard-aside")).position'),'static');
+   await browser('screenshot','/tmp/passport-natural-scroll-mobile.png');
    assert.equal(state.reads.includes('/v1/public/stats'),false);
   });
   await t.test('legacy profile never invents a student number and offers consent-gated school refresh',async()=>{
@@ -76,15 +87,20 @@ test('private play statistics with explicit renewed consent',{timeout:240000},as
    assert.equal(await inspect('document.querySelector(".identity-reauth input").checked'),false);
    assert.equal(await inspect('document.querySelector(".privacy-renewal") === null'),true);
    await browser('set','viewport','1440','600');
-   const before=await inspect('document.querySelector(".dashboard-main").scrollTop');
-   await browser('eval','document.querySelector(".dashboard-aside").scrollTop=500');
-   assert.ok(await inspect('document.querySelector(".dashboard-aside").scrollTop > 0'));
-   assert.equal(await inspect('document.querySelector(".dashboard-main").scrollTop'),before);
+   assert.equal(await inspect('getComputedStyle(document.querySelector(".dashboard-aside")).overflowY'),'visible');
+   assert.equal(await inspect('document.querySelector(".dashboard-aside").scrollHeight <= document.querySelector(".dashboard-aside").clientHeight'),true);
+   await browser('eval','window.scrollTo(0,document.documentElement.scrollHeight)');
+   await until('window.scrollY > 0');
+   assert.equal(await inspect('document.querySelector(".identity-reauth .primary").getBoundingClientRect().bottom <= innerHeight'),true);
+   assert.equal(await inspect('document.querySelector(".dashboard-aside").scrollTop'),0);
+   await browser('screenshot','/tmp/passport-natural-scroll-tall-sidebar.png');
   });
   await t.test('owner sees six metrics and server filters after login',async()=>{
    reset();await open(origin+'/me/stats');await browser('set','viewport','1440','900');
    assert.equal(await inspect('document.querySelectorAll(".stats-metric").length'),6);assert.equal(await inspect('document.querySelector(".stats-presence").textContent.includes("접속 중합성 건축 서버")'),true);assert.equal(state.reads.includes('/v1/me'),true);
    assert.equal(await inspect('document.querySelector(".stats-metric strong").textContent'),'2시간 2분');assert.equal(await inspect('document.body.textContent.includes("DO-NOT-RENDER-IDENTITY")'),false);
+   assert.equal(await inspect('document.documentElement.scrollWidth <= innerWidth'),true);
+   await browser('screenshot','/tmp/passport-natural-scroll-short-page.png');
    await browser('screenshot','/tmp/passport-user-stats-desktop.png');await browser('select','.stats-scope select','first');assert.equal(await inspect('document.querySelector(".stats-metric strong").textContent'),'1시간 1분');
    await browser('set','viewport','390','844');assert.equal(await inspect('document.documentElement.scrollWidth <= innerWidth'),true);await browser('screenshot','/tmp/passport-user-stats-mobile.png');
   });
