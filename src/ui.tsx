@@ -105,17 +105,6 @@ export function AppShell({
               <strong>{displayName}</strong>
               <small>{description}</small>
             </div>
-            {onLogout ? (
-              <button
-                className="icon-button"
-                aria-label="로그아웃"
-                title="로그아웃"
-                disabled={busy}
-                onClick={onLogout}
-              >
-                <Icon name="logout" />
-              </button>
-            ) : null}
           </div>
         </aside>
         <div className="app-body">
@@ -129,7 +118,7 @@ export function AppShell({
               <strong>{displayName}</strong>
               {onLogout ? (
                 <button
-                  className="mobile-logout text-button"
+                  className="header-logout text-button"
                   disabled={busy}
                   onClick={onLogout}
                 >

@@ -8,6 +8,7 @@ export interface Profile {
   id: string;
   privacyConsent?: { version: string; accepted: boolean } | null;
   displayName: string;
+  studentId: string | null;
   identityProvider: "development" | "usaint";
   department: string | null;
   academicStatus: string | null;

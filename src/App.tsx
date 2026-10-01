@@ -9,6 +9,8 @@ import { pollLink } from "./link-polling";
 import { privacyNotice } from "./privacy";
 import { PrivacyConsent } from "./PrivacyConsent";
 import { StatsView } from "./StatsView";
+import { AccountStats } from "./AccountStats";
+import { schoolExpiryDate } from "./dates";
 import { GameConsentNotice } from "./GameConsentNotice";
 import { MembershipCard } from "./MembershipCard";
 import { MinecraftPortrait } from "./MinecraftPortrait";
@@ -22,17 +24,6 @@ const navigation: { id: View; label: string; icon: IconName }[] = [
   { id: "servers", label: "접속 서버", icon: "book" },
   { id: "stats", label: "내 플레이 기록", icon: "dashboard" },
 ];
-const automaticMoveNotice = "계정 연결이 완료되었습니다. 게임에 접속 중이면 허용된 로비로 자동 이동합니다.";
-
-const formatDate = (value: string | null) =>
-  value
-    ? new Intl.DateTimeFormat("ko-KR", {
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(new Date(value))
-    : "확인 대기";
 
 export function App() {
   const [view, setView] = useState<View>(
@@ -277,7 +268,7 @@ export function App() {
       setLinkError(errorMessage(failure));
       return "stop" as const;
     }
-    setLinkPollError(`${errorMessage(failure)} 연결 상태를 자동으로 다시 확인합니다.`);
+    setLinkPollError(errorMessage(failure));
     return "retry" as const;
   });
   const pollingExpiry = useEffectEvent(() => {
@@ -474,7 +465,7 @@ export function App() {
                     <a className="recovery-link" href="/">내 계정 페이지로 이동</a>
                   </> : discordLink ? <>
                     <small>연결할 Discord 계정</small><DiscordTarget account={discordLink} />
-                    <p className="target-reminder">본인 계정이 아니라면 진행하지 마세요. 계정 변경·해제는 관리자에게 문의해야 합니다.</p>
+                    <p className="target-reminder">연결 해제나 계정 변경은 운영진에게 문의바랍니다.</p>
                   </> : <p>Discord 연동 요청을 확인하고 있습니다.</p>}
                 </div> : null}
                 {hasLink ? (
@@ -492,7 +483,7 @@ export function App() {
                       <>
                         <div className="minecraft-identity">
                           <MinecraftPortrait skin={skin} name={link.minecraftName} loading={skinLoading} />
-                          <div><small>연결할 Minecraft 계정</small><strong>{link.minecraftName}</strong><p>정품 Java 계정</p></div>
+                          <div><small>연결할 Minecraft 계정</small><strong>{link.minecraftName}</strong><p className="account-uuid">{link.minecraftUuid}</p></div>
                         </div>
                         <p className="target-reminder">본인 계정이 아니라면 진행하지 마세요. 게임 접속을 유지해 주세요.</p>
                       </>
@@ -564,7 +555,7 @@ export function App() {
         </span>
         <div>
           <h3>{profile.displayName}</h3>
-          <p>{profile.department || "학교 계정"}</p>
+          <p className="student-id">{profile.studentId || "학번 확인 필요"}</p>
         </div>
       </div>
       <dl className="detail-list">
@@ -574,23 +565,20 @@ export function App() {
         </div>
         {profile.department ? <div><dt>소속</dt><dd>{profile.department}</dd></div> : null}
         {!development && profile.universityVerifiedUntil ? (
-          <div><dt>학교 인증 유효기간</dt><dd>{formatDate(profile.universityVerifiedUntil)}</dd></div>
+          <div><dt>학교 인증 유효기간</dt><dd>{schoolExpiryDate(profile.universityVerifiedUntil)}</dd></div>
         ) : null}
         <div>
           <dt>Minecraft</dt>
           <dd>{profile.minecraft?.name ?? "연결되지 않음"}</dd>
         </div>
       </dl>
-      <p className="helper">
-        {development
-          ? "가상 회원 데이터이며 실제 학교 인증이나 운영 서버 권한을 의미하지 않습니다."
-          : "학교 인증은 신원 확인에 사용하며, 소모임 회원 자격은 별도로 확인합니다."}
-      </p>
-      {universityEnabled && access?.schoolExpired ? (
+      {development ? <p className="helper">가상 회원 데이터이며 실제 학교 인증이나 운영 서버 권한을 의미하지 않습니다.</p> : null}
+      {universityEnabled && (access?.schoolExpired || profile.studentId === null) ? (
         <div className="identity-reauth">
+          {profile.studentId === null && !access?.schoolExpired ? <p className="helper">학교 계정으로 다시 로그인하면 학번을 확인할 수 있습니다.</p> : null}
           <PrivacyConsent notice={privacy} accepted={consentAccepted} onChange={setConsentAccepted} loading={privacyLoading} error={privacyError} onRetry={() => void loadPrivacy()} disabled={disabled} />
           <button className="primary" disabled={disabled || !consentReady} onClick={schoolLogin}>
-            {busy === "university" ? "학교 로그인으로 이동 중…" : "동의하고 학교 인증 갱신"}
+            {busy === "university" ? "학교 로그인으로 이동 중…" : access?.schoolExpired ? "동의하고 학교 인증 갱신" : "동의하고 학번 확인"}
           </button>
         </div>
       ) : null}
@@ -624,16 +612,11 @@ export function App() {
             <div className="minecraft-account-copy">
               <span className="account-eyebrow">{link.status === "linked" ? "연결된 계정" : "연결할 계정"}</span>
               <h3>{link.minecraftName}</h3>
-              <p>정품 Java Edition</p>
-              <div className="account-check"><Icon name="check" /><span>{link.status === "linked" ? "Overworld 계정에 연결됨" : "학교 계정과 연결할 대상을 확인해 주세요"}</span></div>
-              {link.status === "pending" ? <small>요청 유효기간 · {formatDate(link.expiresAt)}</small> : null}
+              <p className="account-uuid">{link.minecraftUuid}</p>
+              {link.status === "linked" ? <div className="account-check" role="status"><Icon name="check" /><span>passport 시스템 등록 완료</span></div> : null}
             </div>
           </div>
-          {link.status === "linked" ? (
-            <p className="helper success-text" role="status">
-              {automaticMoveNotice}
-            </p>
-          ) : linkExpired ? (
+          {link.status === "linked" ? null : linkExpired ? (
             <p className="helper warning">
               연결 요청이 만료되었습니다. 게임에서 /passport 로 새 링크를 받아 주세요.
             </p>
@@ -644,8 +627,7 @@ export function App() {
             </div>
           ) : link.webConfirmed ? (
             <div className="command-block" role="status">
-              <p>웹 확인을 완료했습니다. 게임 접속을 확인하고 있어요.</p>
-              <small>게임 접속을 유지해 주세요. 연결이 완료되면 허용된 로비로 자동 이동합니다.</small>
+              <p>게임 접속 확인 중</p>
             </div>
           ) : (
             <div className="connection-confirm">
@@ -676,7 +658,6 @@ export function App() {
             </div>
           )}
           {linkPollError ? <p className="helper warning" role="status">{linkPollError}</p> : null}
-          {link.status === "pending" && !linkExpired ? <p className="helper">연결 상태를 자동으로 확인합니다.</p> : null}
           <button
             className="text-button refresh-link"
             disabled={disabled}
@@ -691,9 +672,8 @@ export function App() {
           <div className="minecraft-account-copy">
             <span className="account-eyebrow">연결된 계정</span>
             <h3>{profile.minecraft.name}</h3>
-            <p>정품 Java Edition</p>
-            <div className="account-check"><Icon name="check" /><span>Overworld 계정에 연결됨</span></div>
-            <small>게임에 접속하면 접속 권한에 따라 서버로 이동합니다.</small>
+            <p className="account-uuid">{profile.minecraft.uuid}</p>
+            <div className="account-check" role="status"><Icon name="check" /><span>passport 시스템 등록 완료</span></div>
           </div>
         </div>
       ) : (
@@ -701,7 +681,7 @@ export function App() {
           <div className="empty-state">
             <h3>게임에서 연결을 시작해 주세요</h3>
             <p>
-              대기 서버에 접속한 뒤 채팅의 <strong>u-SAINT 인증하기</strong>{" "}
+              대기 서버에 접속한 뒤 채팅의 <strong>u-saint 연동하기</strong>{" "}
               링크를 열어 주세요.
             </p>
           </div>
@@ -730,6 +710,7 @@ export function App() {
           </ol>
         </>
       )}
+      <p className="helper card-footnote">연결 해제나 계정 변경은 운영진에게 문의바랍니다.</p>
     </section>
   );
 
@@ -768,7 +749,7 @@ export function App() {
       {serversState !== "ready" ? (
         <div className="empty-state" role="status"><h3>{serversState === "loading" ? "접속 권한을 확인하고 있습니다" : "접속 권한을 확인하지 못했습니다"}</h3>{serversState === "error" ? <p>새로고침하여 현재 접속할 수 있는 서버를 다시 확인해 주세요.</p> : null}</div>
       ) : servers.length ? (
-        <><div className="server-connection"><span>Java Edition 접속 주소</span><strong>overworld.flyjung.kr</strong></div>
+        <><div className="server-connection"><span>서버 주소</span><strong>overworld.flyjung.kr</strong></div>
         <ul className="server-list">
           {servers.map((server) => (
             <li key={server.id}>
@@ -780,14 +761,9 @@ export function App() {
       ) : (
         <div className="empty-state">
           <h3>접속 가능한 서버가 없습니다</h3>
-          <p>{access?.suspended ? "서버 이용이 정지되어 있습니다. 운영자에게 문의해 주세요." : access?.schoolExpired ? "학교 인증이 만료되었습니다. 학교 계정 정보에서 인증을 갱신해 주세요." : "서버별 접근 설정에 따라 목록이 표시됩니다. 권한 확인이 필요하면 운영자에게 문의해 주세요."}</p>
+          {access?.suspended || access?.schoolExpired ? <p>{access.suspended ? "서버 이용이 정지되어 있습니다. 운영진에게 문의바랍니다." : "학교 인증이 만료되었습니다. 학교 계정 정보에서 인증을 갱신해 주세요."}</p> : null}
         </div>
       )}
-      <p className="helper card-footnote">
-        {profile.minecraft
-          ? "회원 상태와 서버별 접근 설정에 따라 접속 권한이 결정됩니다."
-          : "서버에 입장하려면 Minecraft 계정 연결을 완료해야 합니다."}
-      </p>
     </section>
   );
 
@@ -807,15 +783,13 @@ export function App() {
       <div className="page-head">
         <div>
           <h1>{currentNavigation.label}</h1>
-          <p>
+          {view !== "minecraft" ? <p>
             {view === "dashboard"
               ? `${profile.displayName}님의 계정과 접속 권한을 확인하세요.`
-              : view === "minecraft"
-                ? "본인 계정을 확인하면 게임 접속을 확인해 자동으로 연결합니다."
-                : view === "discord"
+              : view === "discord"
                   ? "연결된 Discord 계정과 역할·닉네임 반영 상태를 확인합니다."
                   : view === "stats" ? "내가 플레이한 서버별 기록과 전체 누적 기록을 확인합니다." : "현재 접속할 수 있는 서버를 확인합니다."}
-          </p>
+          </p> : null}
         </div>
         {view !== "stats" ? <button
           disabled={disabled}
@@ -825,7 +799,7 @@ export function App() {
         </button> : null}
       </div>
       {alerts}
-      {privacy && Object.hasOwn(profile, "privacyConsent") && !profile.privacyConsent?.accepted && link?.status !== "pending" && discordLink?.status !== "pending" ? <GameConsentNotice notice={privacy} busy={disabled} onConfirm={version => void perform("privacy-renewal", async () => {
+      {privacy && profile.studentId !== null && Object.hasOwn(profile, "privacyConsent") && !profile.privacyConsent?.accepted && link?.status !== "pending" && discordLink?.status !== "pending" ? <GameConsentNotice notice={privacy} busy={disabled} onConfirm={version => void perform("privacy-renewal", async () => {
         await api("/me/privacy/consent", { method: "POST", body: { consent: { accepted: true, version } }, csrfToken });
         await refresh(); setNotice("변경된 개인정보 안내에 동의했습니다. 게임 기능이 순서대로 반영됩니다.");
       })} /> : null}
@@ -833,31 +807,15 @@ export function App() {
         <>
         <MembershipCard profile={profile} development={development} />
         <div className="dashboard-grid">
-          <div className="stack">
+          <div className="stack dashboard-main" tabIndex={0} aria-label="계정 연결과 서버">
+            <AccountStats onDetails={() => setView("stats")} onError={failure => { if (failure instanceof ApiError && failure.status === 401) void perform("stats-session", async () => { throw failure; }); }} />
             {minecraftCard}
             {serversCard}
             {discordCard}
           </div>
-          <div className="stack">
+          <aside className="stack dashboard-aside" tabIndex={0} aria-label="학교 계정 정보">
             {identityCard}
-            <section className="panel support-panel">
-              <div className="panel-head">
-                <h2>연결이 잘되지 않나요?</h2>
-              </div>
-              <p className="helper">
-                게임 닉네임과 화면에 표시된 오류를 소모임 운영자에게 알려
-                주세요.
-              </p>
-              <div className="support-row">
-                <span>학교 인증</span>
-                <small>{development ? "개발용 신원" : access?.schoolExpired ? "갱신 필요" : "u-SAINT 연동"}</small>
-              </div>
-              <div className="support-row">
-                <span>Discord 연결</span>
-                <small>디스코드 봇에서 시작</small>
-              </div>
-            </section>
-          </div>
+          </aside>
         </div>
         </>
       ) : (

@@ -1,3 +1,4 @@
+import { emptyStats } from './fixtures.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -34,6 +35,7 @@ const server = http.createServer(async (request, response) => {
     minecraft: state.linked ? { uuid: '00000000-0000-4000-8000-000000000002', name: 'SyntheticPlayer' } : null,
     discordConnection: null, csrfToken: 'synthetic-csrf',
   });
+  if (url.pathname === '/v1/me/stats') return json(200, emptyStats);
   if (url.pathname === '/v1/me/servers') return json(200, { servers: [{ id: 'fixture_lobby', label: '가상 로비' }, { id: 'fixture_survival', label: '가상 야생 서버' }] });
   if (url.pathname.endsWith('/inspect')) {
     assert.equal(request.method, 'POST'); assert.equal((await body()).token, token);
@@ -85,6 +87,9 @@ test('explicit consent and local skin rendering', { timeout: 240_000 }, async (t
       assert.equal(await inspect('document.querySelector("input[type=checkbox]").checked'), false);
       assert.equal(await inspect('document.querySelector(".login-actions .primary").disabled'), true);
       assert.equal(state.startBodies.length, 0);
+      assert.equal(await inspect('document.querySelector(".account-uuid").textContent'), '00000000-0000-4000-8000-000000000002');
+      assert.equal(await inspect('document.body.textContent.includes("정품 Java")'), false);
+      assert.equal(await inspect('document.querySelector(".privacy-choice").textContent'), '동의하지 않으면 로그인과 계정 연결을 진행할 수 없습니다.');
       assert.equal(await inspect('location.hash'), '');
       assert.equal(await inspect('localStorage.length + sessionStorage.length'), 0);
       assert.equal(await inspect('document.querySelector(".privacy-purpose").textContent'), privacy.purpose);
@@ -129,7 +134,7 @@ test('explicit consent and local skin rendering', { timeout: 240_000 }, async (t
       assert.equal(await inspect('document.querySelector("input[type=checkbox]").checked'), false);
       assert.equal(await inspect('document.querySelector(".connection-confirm .primary").disabled'), true);
       state.rejectVersion = false; await consent(); await click('동의하고 이 Minecraft 계정 연결');
-      await until("document.body.textContent.includes('게임 접속을 확인하고 있어요')");
+      await until("document.body.textContent.includes('게임 접속 확인 중')");
       assert.deepEqual(state.confirmBodies[1], { token, consent: { accepted: true, version: 'next-test-version' } });
       assert.equal(await inspect('document.querySelector("input[type=checkbox]") === null'), true);
     });
@@ -144,7 +149,7 @@ test('explicit consent and local skin rendering', { timeout: 240_000 }, async (t
       assert.equal(await inspect("performance.getEntriesByType('resource').some(e => e.name.includes('avatar.invalid'))"), false);
       assert.equal(state.confirmBodies.length, 0);
       await consent(); await click('동의하고 이 Minecraft 계정 연결');
-      await until("document.body.textContent.includes('게임 접속을 확인하고 있어요')");
+      await until("document.body.textContent.includes('게임 접속 확인 중')");
       assert.equal(await inspect("document.body.textContent.includes('아래 연결 상태를 확인하고 다시 시도')"), false);
     });
     await t.test('callback with web confirmation needs no second checkbox or command, and dashboard renders linked skin', async () => {
@@ -152,7 +157,7 @@ test('explicit consent and local skin rendering', { timeout: 240_000 }, async (t
       assert.equal(await inspect('document.querySelector("input[type=checkbox]") === null'), true);
       assert.equal(await inspect("document.body.textContent.includes('/passport confirm')"), false);
       state.linked = true;
-      await until("document.body.textContent.includes('계정 연결이 완료되었습니다')");
+      await until("document.body.textContent.includes('passport 시스템 등록 완료')");
       assert.equal(state.confirmBodies.length, 0);
       await open(origin); await browser('set', 'viewport', '1440', '1000');
       await until('Boolean(document.querySelector("canvas.skin-visible"))');

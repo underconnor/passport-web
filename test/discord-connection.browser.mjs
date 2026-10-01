@@ -1,3 +1,4 @@
+import { emptyStats } from './fixtures.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -38,6 +39,7 @@ const server = http.createServer(async (request, response) => {
         nickname: { desired: '합성 사용자 / SyntheticPlayer', status: state.nicknameStatus, updatedAt: null, lastError: state.nicknameStatus === 'failed' ? 'not_manageable' : null } } : {}) } : null,
     csrfToken: 'synthetic-auth-csrf',
   });
+  if (url.pathname === '/v1/me/stats') return json(200, emptyStats);
   if (url.pathname === '/v1/me/servers') return json(200, { servers: state.active ? [{ id: 'fixture', label: '가상 회원 서버' }] : [] });
   if (url.pathname === `/v1/discord/link-sessions/${id}/inspect`) {
     state.inspectReads++; assert.equal(request.method, 'POST'); assert.equal((await body()).token, token); assert.equal(url.search, '');
@@ -102,7 +104,7 @@ test('bot-proven Discord linking and applied role status', { timeout: 300_000 },
       await until("document.body.textContent.includes('역할 처리 대기')");
       assert.equal(await inspect("document.body.textContent.includes('역할 지급 완료')"), false);
       assert.deepEqual(state.confirms, [{ token, consent: { accepted: true, version: privacy.version } }]);
-      assert.equal(await inspect("document.body.textContent.includes('연결 해제나 계정 변경은 소모임 관리자')"), true);
+      assert.equal(await inspect("document.body.textContent.includes('연결 해제나 계정 변경은 운영진에게 문의바랍니다.')"), true);
       state.roleStatus = 'granted'; await until("document.body.textContent.includes('역할 지급 완료')");
       assert.equal(state.legacyWrites, 0);
       await browser('screenshot', '/tmp/passport-web-discord-connected-desktop.png');

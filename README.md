@@ -12,7 +12,10 @@ Overworld 학교 인증과 Minecraft 계정 연결을 위한 독립 React·TypeS
 - 같은 출처 API가 제공한 PNG로 Minecraft 머리·전신 표시, 실패 시 기본 아바타
 - Discord 봇의 호출자 전용 연동 링크, 동의·학교 인증으로 연결된 계정 표시
 - Discord 연결과 역할 대기·지급·회수·처리 실패를 분리하고 변경·해제는 관리자 문의로 안내
-- 주요 카드에서 소모임 회원 여부와 학교 인증을 별도로 표시
+- 계정 상태에 회원 혜택과 학교가 확인한 학번·이름 표시, Minecraft UUID와 등록 완료 상태 표시
+- 내 계정에서 플레이 시간·채굴·설치·몹 처치 요약, 상세 화면에서 서버별 기록 조회
+- 학기 시작 시각 이전 마지막 유효일을 한국 날짜로 표시, 이전 학번 미보관 계정은 명시적 동의와 학교 재로그인으로 확인
+- 데스크톱 계정 본문과 학교 정보 패널을 독립 스크롤하며 모바일은 문서 스크롤 사용, 로그아웃은 오른쪽 상단
 - `/me/servers`가 반환한 접속 가능 서버만 표시하며, 비회원의 학교 인증 서버도 지원
 - 오류, 만료, 연결 누락, 비활성 회원 처리
 - 학교 인증·회원 명부·이용 정지 상태를 구분하고 학교 인증 만료 시 재인증
@@ -55,7 +58,8 @@ Dockerfile은 정적 빌드 결과를 비특권 nginx 사용자로 8080 포트�
 | `POST /v1/auth/development` | 개발용 가상 신원 선택 |
 | `POST /v1/auth/university/start` | CSRF, 필수 동의와 선택적 Minecraft 링크 문맥으로 학교 로그인 URL 받기 |
 | `POST /v1/auth/logout` | 세션 종료 |
-| `GET /v1/me` | 내 프로필 |
+| `GET /v1/me` | 내 프로필과 본인 전용 `studentId` (미확인 시 null) |
+| `GET /v1/me/stats` | 내 누적·서버별 플레이 기록 |
 | `GET /v1/me/servers` | 허용 서버 |
 | `POST /v1/me/discord/consent` | 기존 Discord 연결자의 최신 역할·닉네임 처리 동의 |
 | `GET /v1/me/minecraft-skin` | 연결된 Minecraft 계정의 PNG data URI |

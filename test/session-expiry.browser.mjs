@@ -1,3 +1,4 @@
+import { emptyStats } from './fixtures.mjs';
 import { test } from 'node:test';
 import { privacy } from './fixtures.mjs';
 import assert from 'node:assert/strict';
@@ -40,6 +41,7 @@ const server = http.createServer(async (request, response) => {
     discordConnection: null,
     csrfToken: 'synthetic-old-csrf',
   });
+  if (url.pathname === '/v1/me/stats') return json(200, emptyStats);
   if (url.pathname === '/v1/me/servers') return json(200, { servers: [{ id: 'fixture', label: '회귀 테스트 서버' }] });
   if (url.pathname === '/v1/auth/logout') {
     authenticated = false;

@@ -1,3 +1,4 @@
+import { emptyStats } from './fixtures.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -44,6 +45,7 @@ const server = http.createServer(async (request, response) => {
     if (state.holdCompletion && state.meReads === 2) { const old = profile(); let released = false; state.release = () => { if (!released) { released = true; json(200, old); } }; return; }
     return json(200, profile());
   }
+  if (url.pathname === '/v1/me/stats') return json(200, emptyStats);
   if (url.pathname === '/v1/me/servers') return state.failServers ? json(503, { code: 'temporarily_unavailable' }) : json(200, { servers: state.servers });
   if (url.pathname.endsWith('/skin') || url.pathname === '/v1/me/minecraft-skin') return json(200, { dataUrl: null, model: null });
   if (url.pathname === `/v1/link-sessions/${id}/inspect`) return json(200, { id, minecraftName: 'SyntheticPlayer', minecraftUuid: id, status: state.linked ? 'linked' : 'pending', expiresAt: future(), webConfirmed: state.linked, gameConfirmed: state.linked });
@@ -79,7 +81,7 @@ test('club membership and school server permissions stay independent', { timeout
       assert.ok((await browser('snapshot', '-i')).includes('접속 서버'));
       assert.equal(await inspect('Boolean(document.querySelector(".vite-error-overlay, [data-nextjs-dialog]"))'), false);
       assert.equal(await browser('errors'), ''); await browser('console');
-      assert.equal(await inspect('document.querySelector(".membership-label").textContent'), '소모임 회원');
+      assert.equal(await inspect('document.querySelector(".membership-label").textContent'), 'Overworld 소모임 회원입니다.');
       assert.equal(await inspect('document.querySelector(".membership-school strong").textContent'), 'u-SAINT 인증 완료');
       assert.deepEqual(await serverNames(), ['합성 회원 서버']);
       assert.equal(await inspect('document.querySelector(".minecraft-link-notice strong").textContent'), 'Minecraft 계정이 연결되지 않았어요');
@@ -101,7 +103,7 @@ test('club membership and school server permissions stay independent', { timeout
       assert.equal(await inspect('Boolean(document.querySelector(".connection-confirm"))'), true);
       await browser('find', 'role', 'checkbox', 'check', '--name', '개인정보 수집·이용에 동의합니다.');
       await click('동의하고 이 Minecraft 계정 연결');
-      await until("document.body.textContent.includes('계정 연결이 완료되었습니다')");
+      await until("document.body.textContent.includes('passport 시스템 등록 완료')");
       assert.equal(await inspect('document.querySelector(".minecraft-link-notice") === null'), true);
       assert.deepEqual(state.confirms, [{ token, consent: { accepted: true, version: privacy.version } }]);
       await open(`${origin}/discord/link/${id}#token=${token}`);
@@ -131,11 +133,11 @@ test('club membership and school server permissions stay independent', { timeout
         reset({ ...options, servers: [] }); await open(origin);
         assert.equal(await empty(), '접속 가능한 서버가 없습니다');
         if (options.schoolExpired) {
-          assert.equal(await inspect('document.querySelector(".membership-label").textContent'), '소모임 회원');
+          assert.equal(await inspect('document.querySelector(".membership-label").textContent'), 'Overworld 소모임 회원입니다.');
           assert.equal(await inspect('document.querySelector(".membership-school strong").textContent'), '유효기간 만료');
         } else {
           assert.equal(await inspect('Boolean(document.querySelector(".membership-restriction"))'), true);
-          assert.equal(await inspect('document.querySelector(".membership-label").textContent'), options.rosterSuspended ? '회원 이용 정지' : options.member === false ? '소모임 비회원' : '소모임 회원');
+          assert.equal(await inspect('document.querySelector(".membership-label").textContent'), options.rosterSuspended ? '회원 이용 정지' : options.member === false ? '소모임 비회원' : 'Overworld 소모임 회원입니다.');
         }
         await open(linkUrl); assert.equal(await inspect('document.querySelector(".connection-confirm") === null'), true);
         assert.equal(state.confirms.length, 0);

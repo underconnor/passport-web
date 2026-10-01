@@ -19,7 +19,7 @@ export interface PlayStatistics {
   playerCount?: number;
 }
 const number = (value: number) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value);
-function playTime(value: number) {
+export function playTime(value: number) {
   const minutes = Math.floor(value / 60);
   return minutes >= 60 ? `${number(Math.floor(minutes / 60))}시간 ${minutes % 60}분` : `${number(minutes)}분`;
 }

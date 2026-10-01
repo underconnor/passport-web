@@ -1,7 +1,7 @@
 import { deflateSync } from 'node:zlib';
 
 export const privacy = {
-  version: '2026-10-01.3',
+  version: '2026-10-01.5',
   purpose: '가상 서비스 회원 확인과 Minecraft·Discord 계정 연결을 위한 테스트 안내입니다.',
   items: ['학교가 제공한 회원 식별 정보', 'Minecraft UUID와 닉네임', '봇이 확인한 Discord 계정 정보'],
   retention: '이 문구는 실제 보관 정책이 아닌 합성 테스트 안내입니다.',
@@ -29,3 +29,5 @@ for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
   pixels[offset + 3] = (y < 16 && x >= 32) || (y >= 32 && y < 48) || (y >= 48 && (x < 16 || x >= 48)) ? 0 : 255;
 }
 export const skin = { dataUrl: `data:image/png;base64,${Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR', header),chunk('IDAT', deflateSync(pixels)),chunk('IEND', Buffer.alloc(0))]).toString('base64')}`, model: 'slim' };
+
+export const emptyStats = { available: false, totals: { playSeconds: 0, blocksBroken: 0, blocksPlaced: 0, damageTakenMilli: 0, deaths: 0, mobKills: 0 }, servers: [] };

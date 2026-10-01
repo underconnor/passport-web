@@ -1,3 +1,4 @@
+import { emptyStats } from './fixtures.mjs';
 import { test } from 'node:test';
 import { privacy } from './fixtures.mjs';
 import assert from 'node:assert/strict';
@@ -36,6 +37,7 @@ const server = http.createServer(async (request, response) => {
       minecraft: state.linked ? { uuid: '00000000-0000-4000-8000-000000000002', name: 'SyntheticPlayer' } : null,
       discordConnection: null, csrfToken: 'synthetic-csrf' });
   }
+  if (url.pathname === '/v1/me/stats') return json(200, emptyStats);
   if (url.pathname === '/v1/me/servers') { state.serverReads++; return json(200, { servers: [{ id: 'fixture_lobby', label: '가상 로비' }] }); }
   if (url.pathname.endsWith('/inspect')) {
     state.inspectReads++;
@@ -93,7 +95,7 @@ test('link completion updates automatically without commands or leaving the curr
       assert.equal(await inspect('localStorage.length + sessionStorage.length'), 0);
       await browser('find', 'role', 'checkbox', 'check', '--name', '개인정보 수집·이용에 동의합니다.');
       await browser('find', 'role', 'button', 'click', '--name', '동의하고 이 Minecraft 계정 연결');
-      await until("document.body.textContent.includes('게임 접속을 확인하고 있어요')");
+      await until("document.body.textContent.includes('게임 접속 확인 중')");
       assert.equal(await inspect("document.body.textContent.includes('/passport confirm')"), false);
       await browser('screenshot', '/tmp/passport-web-auto-pending.png');
       await browser('find', 'role', 'button', 'click', '--name', 'Discord 연결');
@@ -104,7 +106,7 @@ test('link completion updates automatically without commands or leaving the curr
       assert.equal(state.profileReads, 2); assert.equal(state.serverReads, 2); assert.equal(state.authReads, 1);
       assert.equal(await inspect("document.querySelector('nav button[aria-current=page]').textContent.includes('Discord 연결')"), true);
       await browser('find', 'role', 'button', 'click', '--name', 'Minecraft 연결');
-      await until("document.body.textContent.includes('계정 연결이 완료되었습니다. 게임에 접속 중이면')");
+      await until("document.body.textContent.includes('passport 시스템 등록 완료')");
       const count = state.inspectReads;
       await browser('screenshot', '/tmp/passport-web-auto-linked-desktop.png');
       await browser('set', 'viewport', '390', '844');
@@ -121,7 +123,7 @@ test('link completion updates automatically without commands or leaving the curr
       await browser('open', url); await browser('wait', '--load', 'networkidle');
       await browser('find', 'role', 'checkbox', 'check', '--name', '개인정보 수집·이용에 동의합니다.');
       await browser('find', 'role', 'button', 'click', '--name', '동의하고 이 Minecraft 계정 연결');
-      await until("document.body.textContent.includes('계정 연결이 완료되었습니다. 게임에 접속 중이면')");
+      await until("document.body.textContent.includes('passport 시스템 등록 완료')");
       assert.equal(await inspect("document.body.textContent.includes('/passport confirm')"), false);
       assert.equal(state.profileReads, 2); assert.equal(state.confirmations, 1);
     });
