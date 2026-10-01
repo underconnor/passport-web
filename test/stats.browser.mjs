@@ -9,8 +9,8 @@ import { promisify } from 'node:util';
 import { privacy as basePrivacy } from './fixtures.mjs';
 const privacy = {...basePrivacy,version:'2026-10-01.5'};
 const run = promisify(execFile), dist=fileURLToPath(new URL('../dist/',import.meta.url)), session=`passport-stats-${process.pid}`;
-const totals={playSeconds:7320,blocksBroken:5210,blocksPlaced:890,damageTakenMilli:125500,deaths:12,mobKills:302};
-const first={playSeconds:3660,blocksBroken:4100,blocksPlaced:450,damageTakenMilli:60500,deaths:8,mobKills:203};
+const totals={playSeconds:7320,blocksBroken:5210,blocksPlaced:890,damageTakenMilli:125500,deaths:12,mobKills:302,playerKills:7,distanceCm:1250500};
+const first={playSeconds:3660,blocksBroken:4100,blocksPlaced:450,damageTakenMilli:60500,deaths:8,mobKills:203,playerKills:2,distanceCm:54320};
 let state;
 const reset=()=>{state={authenticated:true,studentId:'20991234',accepted:true,available:true,online:true,statsError:false,consents:[],reads:[],hold:false,release:null};};
 const server=http.createServer(async(req,res)=>{
@@ -25,7 +25,8 @@ const server=http.createServer(async(req,res)=>{
   if(url.pathname==='/v1/me/stats'){
     if(url.pathname==='/v1/me/stats'&&!state.authenticated)return json(401,{code:'session_required'});
     if(state.statsError)return json(503,{code:'synthetic-sensitive-error'});
-    const response={available:state.available,totals,servers:[{serverId:'first',label:'합성 건축 서버',...first,onlinePlayerCount:state.online?1:0},{serverId:'second',label:'합성 야생 서버',...first,onlinePlayerCount:0}],presence:{online:state.online,serverId:state.online?'first':null,serverLabel:state.online?'합성 건축 서버':null,lastSeenAt:new Date().toISOString()},unexpectedPrivateField:'DO-NOT-RENDER-IDENTITY'};
+    const response={available:state.available,totals:{...totals},servers:[{serverId:'first',label:'합성 건축 서버',...first,onlinePlayerCount:state.online?1:0},{serverId:'second',label:'합성 야생 서버',...first,onlinePlayerCount:0}],presence:{online:state.online,serverId:state.online?'first':null,serverLabel:state.online?'합성 건축 서버':null,lastSeenAt:new Date().toISOString()},unexpectedPrivateField:'DO-NOT-RENDER-IDENTITY'};
+    if(state.legacy) for(const counters of [response.totals,...response.servers]) { delete counters.playerKills; delete counters.distanceCm; }
     if(state.hold){state.hold=false;state.release=()=>json(200,response);return;}
     return json(200,response);
   }
@@ -44,8 +45,9 @@ test('private play statistics with explicit renewed consent',{timeout:240000},as
  try{
   await t.test('account home uses natural page scrolling with sticky sidebars and no nested scroll panes',async()=>{
    reset();await open(origin);await browser('set','viewport','1440','900');
-   assert.equal(await inspect('document.querySelectorAll(".account-stat").length'),4);
+   assert.equal(await inspect('document.querySelectorAll(".account-stat").length'),6);
    assert.equal(await inspect('document.querySelector(".account-stat strong").textContent'),'2시간 2분');
+   assert.deepEqual(await inspect('[...document.querySelectorAll(".account-stat strong")].slice(-2).map(el=>el.textContent)'),['7','12.5 km']);
    assert.equal(await inspect('document.querySelector(".student-id").textContent'),'20991234');
    assert.equal(await inspect('document.querySelector(".verified-school-identity").textContent'),'20991234 합성 사용자');
    assert.equal(await inspect('[...document.querySelectorAll(".detail-list div")].find(item=>item.textContent.includes("학교 인증 유효기간")).querySelector("dd").textContent'),'2027년 2월 28일');
@@ -95,18 +97,21 @@ test('private play statistics with explicit renewed consent',{timeout:240000},as
    assert.equal(await inspect('document.querySelector(".dashboard-aside").scrollTop'),0);
    await browser('screenshot','/tmp/passport-natural-scroll-tall-sidebar.png');
   });
-  await t.test('owner sees six metrics and server filters after login',async()=>{
+  await t.test('owner sees eight metrics and server filters after login',async()=>{
    reset();await open(origin+'/me/stats');await browser('set','viewport','1440','900');
-   assert.equal(await inspect('document.querySelectorAll(".stats-metric").length'),6);assert.equal(await inspect('document.querySelector(".stats-presence").textContent.includes("접속 중합성 건축 서버")'),true);assert.equal(state.reads.includes('/v1/me'),true);
+   assert.equal(await inspect('document.querySelectorAll(".stats-metric").length'),8);assert.equal(await inspect('document.querySelector(".stats-presence").textContent.includes("접속 중합성 건축 서버")'),true);assert.equal(state.reads.includes('/v1/me'),true);
    assert.equal(await inspect('document.querySelector(".stats-metric strong").textContent'),'2시간 2분');assert.equal(await inspect('document.body.textContent.includes("DO-NOT-RENDER-IDENTITY")'),false);
    assert.equal(await inspect('document.documentElement.scrollWidth <= innerWidth'),true);
+   assert.deepEqual(await inspect('[...document.querySelectorAll(".stats-metric")].slice(-2).map(el=>[el.querySelector("span").textContent,el.querySelector("strong").textContent])'),[['플레이어 처치','7'],['이동 거리','12.5 km']]);
    await browser('screenshot','/tmp/passport-natural-scroll-short-page.png');
    await browser('screenshot','/tmp/passport-user-stats-desktop.png');await browser('select','.stats-scope select','first');assert.equal(await inspect('document.querySelector(".stats-metric strong").textContent'),'1시간 1분');
-   await browser('set','viewport','390','844');assert.equal(await inspect('document.documentElement.scrollWidth <= innerWidth'),true);await browser('screenshot','/tmp/passport-user-stats-mobile.png');
+   assert.deepEqual(await inspect('[...document.querySelectorAll(".stats-metric")].slice(-2).map(el=>el.querySelector("strong").textContent)'),['2','543 m']);
+   await browser('set','viewport','390','844');assert.equal(await inspect('document.documentElement.scrollWidth <= innerWidth'),true);await browser('screenshot','/tmp/passport-user-stats-mobile.png','--full');
+   state.legacy=true;await click('기록 새로고침');await until('document.querySelectorAll(".stats-metric").length === 8');assert.deepEqual(await inspect('[...document.querySelectorAll(".stats-metric")].slice(-2).map(el=>el.querySelector("strong").textContent)'),['0','0 m']);
   });
   await t.test('personal deep link loads only owner endpoint and failed refresh removes old metrics',async()=>{
    reset();await open(origin+'/me/stats');assert.equal(state.reads.includes('/v1/me/stats'),true);assert.equal(state.reads.includes('/v1/public/stats'),false);
-   await until('document.querySelectorAll(".stats-metric").length === 6');state.online=false;await click('기록 새로고침');await until('document.querySelector(".stats-presence strong")?.textContent === "오프라인"');state.statsError=true;await click('기록 새로고침');await until('document.querySelectorAll(".stats-metric").length === 0');
+   await until('document.querySelectorAll(".stats-metric").length === 8');state.online=false;await click('기록 새로고침');await until('document.querySelector(".stats-presence strong")?.textContent === "오프라인"');state.statsError=true;await click('기록 새로고침');await until('document.querySelectorAll(".stats-metric").length === 0');
    assert.equal(await inspect('document.body.textContent.includes("synthetic-sensitive-error")'),false);state.statsError=false;state.available=false;await click('기록 새로고침');await until('document.body.textContent.includes("플레이 기록 집계를 준비하고 있어요")');
   });
   await t.test('renewed consent starts unchecked and submits actual current notice with CSRF',async()=>{
