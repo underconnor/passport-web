@@ -77,7 +77,7 @@ const messages: Record<string, string> = {
   link_consumed:
     "이미 사용되거나 취소된 링크입니다. 게임에서 새 링크를 받아 주세요.",
   subject_already_linked:
-    "이 회원 계정에는 다른 Minecraft 계정이 연결되어 있습니다.",
+    "이 학교 계정에는 다른 Minecraft 계정이 연결되어 있습니다.",
   confirming_session_expired:
     "연결 확인 세션이 만료되었습니다. 로그인하고 새 링크를 받아 주세요.",
   web_confirmation_consumed:
@@ -97,7 +97,7 @@ const messages: Record<string, string> = {
   invalid_token:
     "유효하지 않은 연결 링크입니다. 게임에서 새 링크를 받아 주세요.",
   membership_required:
-    "현재 활성 회원으로 확인되지 않아 계정을 연결할 수 없습니다.",
+    "접속 가능한 서버가 없어 게임 계정을 연결할 수 없습니다. 학교 인증과 접속 서버를 확인해 주세요.",
   minecraft_already_linked:
     "이미 연결된 Minecraft 계정입니다. 운영자에게 문의해 주세요.",
   development_auth_disabled:

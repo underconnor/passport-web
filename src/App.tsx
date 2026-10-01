@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useEffectEvent, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { api, ApiError, errorMessage } from "./api";
 import type { AuthSession, DiscordLinkSession, LinkSession, LinkSummary, MinecraftSkin, PrivacyNotice, Profile, Server, UniversityStart } from "./api";
-import { accountAccess, linkCallbackError, schoolLoginDestination, universityCallbackError } from "./auth";
+import { accountAccess, minecraftEligibility, linkCallbackError, schoolLoginDestination, universityCallbackError } from "./auth";
 import { automaticDiscordError, automaticLinkError, discordLinkReference, invalidDiscordLinkPath, invalidLinkPath, linkReference, universityAuthError } from "./link";
 import { discordLinkError as discordFailureMessage } from "./discord";
 import { DiscordCard, DiscordTarget } from "./DiscordCard";
 import { pollLink } from "./link-polling";
 import { privacyNotice } from "./privacy";
 import { PrivacyConsent } from "./PrivacyConsent";
+import { MembershipCard } from "./MembershipCard";
 import { MinecraftPortrait } from "./MinecraftPortrait";
 import { AppShell, Brand, DevelopmentStrip, Icon } from "./ui";
 import type { IconName } from "./ui";
@@ -37,6 +38,8 @@ export function App() {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [servers, setServers] = useState<Server[]>([]);
+  const [serversState, setServersState] = useState<"loading" | "ready" | "error">("loading");
+  const accountGeneration = useRef(0);
   const [link, setLink] = useState<LinkSession | null>(null);
   const [linkError, setLinkError] = useState("");
   const [linkPollError, setLinkPollError] = useState("");
@@ -77,26 +80,53 @@ export function App() {
     return () => controller.abort();
   }, [loadPrivacy]);
 
-  const refresh = useCallback(async (signal?: AbortSignal) => {
-    setError("");
-    const auth = await api<AuthSession>("/auth/session", { signal });
-    if (signal?.aborted) return;
-    setSession(auth);
-    if (auth.authenticated) {
+  const fetchAccount = useCallback(async (signal?: AbortSignal, generation = ++accountGeneration.current) => {
+    try {
       const [me, allowed] = await Promise.all([
         api<Profile>("/me", { signal }),
         api<{ servers: Server[] }>("/me/servers", { signal }),
       ]);
-      if (signal?.aborted) return;
+      if (signal?.aborted || generation !== accountGeneration.current) return null;
       setProfile(me);
       setServers(allowed.servers);
-    } else {
-      setProfile(null);
+      setServersState("ready");
+      return me;
+    } catch (failure) {
+      if (signal?.aborted || generation !== accountGeneration.current) return null;
+      // Old permissions are not evidence that a failed refresh still allows access.
       setServers([]);
+      setServersState("error");
+      throw failure;
     }
+  }, []);
+
+  const refresh = useCallback(async (signal?: AbortSignal) => {
+    const generation = ++accountGeneration.current;
+    const current = () => !signal?.aborted && generation === accountGeneration.current;
+    setError("");
+    setServersState("loading");
+    let auth: AuthSession;
+    try {
+      auth = await api<AuthSession>("/auth/session", { signal });
+      if (!current()) return;
+      setSession(auth);
+      if (auth.authenticated) {
+        await fetchAccount(signal, generation);
+      } else {
+        setProfile(null);
+        setServers([]);
+        setServersState("ready");
+      }
+    } catch (failure) {
+      if (!current()) return;
+      setServers([]);
+      setServersState("error");
+      throw failure;
+    }
+    if (!current()) return;
     if (linkReference?.token) {
       try {
-        const current = await api<LinkSession>(
+        const inspected = await api<LinkSession>(
           `/link-sessions/${linkReference.id}/inspect`,
           {
             method: "POST",
@@ -105,32 +135,33 @@ export function App() {
             signal,
           },
         );
-        if (!signal?.aborted) {
-          setLink(current);
+        if (current()) {
+          setLink(inspected);
           setLinkError("");
           setLinkPollError("");
         }
       } catch (failure) {
-        if (!signal?.aborted) {
+        if (current()) {
           setLink(null);
           setLinkError(errorMessage(failure));
         }
       }
     }
+    if (!current()) return;
     if (discordLinkReference?.token) {
       try {
-        const current = await api<DiscordLinkSession>(`/discord/link-sessions/${discordLinkReference.id}/inspect`, {
+        const inspected = await api<DiscordLinkSession>(`/discord/link-sessions/${discordLinkReference.id}/inspect`, {
           method: "POST", body: { token: discordLinkReference.token }, csrfToken: auth.csrfToken, signal,
         });
-        if (!signal?.aborted) { setDiscordLink(current); setDiscordLinkError(""); }
+        if (current()) { setDiscordLink(inspected); setDiscordLinkError(""); }
       } catch (failure) {
-        if (!signal?.aborted) {
+        if (current()) {
           setDiscordLink(null);
           setDiscordLinkError(failure instanceof ApiError ? discordFailureMessage(failure.code) : errorMessage(failure));
         }
       }
     }
-  }, []);
+  }, [fetchAccount]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -144,6 +175,22 @@ export function App() {
     return () => controller.abort();
   }, [refresh]);
 
+  function clearAuthenticatedState() {
+    ++accountGeneration.current;
+    setProfile(null);
+    setServers([]);
+    setServersState("loading");
+    setDiscordLink(null);
+    setDiscordLinkError("");
+    setLink(null);
+    setLinkError("");
+    setLinkPollError("");
+    setSession(null);
+    setConsentAccepted(false);
+    setSkin(null);
+    setView("dashboard");
+  }
+
   async function perform(name: string, action: () => Promise<void>) {
     setBusy(name);
     setError("");
@@ -155,17 +202,7 @@ export function App() {
         await loadPrivacy();
       }
       if (failure instanceof ApiError && failure.status === 401) {
-        setProfile(null);
-        setServers([]);
-        setDiscordLink(null);
-        setDiscordLinkError("");
-        setLink(null);
-        setLinkError("");
-        setLinkPollError("");
-        setSession(null);
-        setConsentAccepted(false);
-        setSkin(null);
-        setView("dashboard");
+        clearAuthenticatedState();
         try {
           await refresh();
         } catch (recoveryFailure) {
@@ -183,7 +220,8 @@ export function App() {
   const csrfToken = profile?.csrfToken ?? session?.csrfToken;
   const signedIn = profile !== null;
   const access = profile ? accountAccess(profile) : null;
-  const active = access?.canAccess ?? false;
+  const canLinkDiscord = access?.canLinkDiscord ?? false;
+  const minecraftAccess = profile ? minecraftEligibility(profile, serversState === "ready" ? servers.length : 0, session?.authMode === "development") : null;
   const hasLink = linkReference !== null || invalidLinkPath;
   const missingToken = hasLink && !linkReference?.token;
   const linkExpired = link
@@ -303,22 +341,16 @@ export function App() {
   useEffect(() => {
     if (!signedIn || !completedLinkId) return;
     const controller = new AbortController();
-    Promise.all([
-      api<Profile>("/me", { signal: controller.signal }),
-      api<{ servers: Server[] }>("/me/servers", { signal: controller.signal }),
-    ]).then(([me, allowed]) => {
-      if (!controller.signal.aborted) { setProfile(me); setServers(allowed.servers); }
-    }).catch((failure) => {
+    void fetchAccount(controller.signal).catch((failure) => {
       if (!controller.signal.aborted) completionError(failure);
     });
     return () => controller.abort();
-  }, [signedIn, completedLinkId]);
+  }, [signedIn, completedLinkId, fetchAccount]);
 
   const pendingDiscordRole = profile?.discordConnection?.roleStatus === "pending" && (view === "dashboard" || view === "discord")
     ? profile.discordConnection.discordId : null;
-  const rolePollResult = useEffectEvent(([me, allowed]: [Profile, { servers: Server[] }]) => {
-    setProfile(me); setServers(allowed.servers);
-    return me.discordConnection?.roleStatus === "pending" ? "continue" as const : "stop" as const;
+  const rolePollResult = useEffectEvent((me: Profile | null) => {
+    return me?.discordConnection?.roleStatus === "pending" ? "continue" as const : "stop" as const;
   });
   const rolePollError = useEffectEvent((failure: unknown) => {
     if (failure instanceof ApiError && failure.status === 401) { completionError(failure); return "stop" as const; }
@@ -328,10 +360,10 @@ export function App() {
     if (!pendingDiscordRole || disabled) return;
     return pollLink({
       expiresAt: new Date(Date.now() + 120_000).toISOString(), intervalMs: 5000,
-      inspect: (signal) => Promise.all([api<Profile>("/me", { signal }), api<{ servers: Server[] }>("/me/servers", { signal })]),
+      inspect: (signal) => fetchAccount(signal),
       onResult: rolePollResult, onError: rolePollError, onExpire: () => {},
     });
-  }, [pendingDiscordRole, disabled]);
+  }, [pendingDiscordRole, disabled, fetchAccount]);
 
   const development = session?.authMode === "development";
   const universityEnabled = session?.authMode === "university";
@@ -407,7 +439,7 @@ export function App() {
   const logout = () =>
     void perform("logout", async () => {
       await api("/auth/logout", { method: "POST", csrfToken });
-      setConsentAccepted(false);
+      clearAuthenticatedState();
       await refresh();
       setView("dashboard");
       setNotice("로그아웃했습니다.");
@@ -422,7 +454,7 @@ export function App() {
             <Brand large />
             <h1>{targetDiscordId ? "내 Discord 계정 연결" : targetLinkId ? "내 Minecraft 계정 연결" : "Overworld에 오신 것을 환영해요"}</h1>
             <p className="login-description">
-              {targetLinkId || targetDiscordId ? "아래 계정이 본인 계정인지 확인해 주세요." : "학교 계정으로 회원 자격을 확인하고"}
+              {targetLinkId || targetDiscordId ? "아래 계정이 본인 계정인지 확인해 주세요." : "학교 계정으로 로그인하고"}
               <br />{targetDiscordId ? "학교 인증 후 디스코드 회원 역할을 반영합니다." : targetLinkId ? "학교 인증을 마치면 게임에 자동으로 연결됩니다." : "Minecraft와 Discord 계정을 관리하세요."}
             </p>
             {loading ? (
@@ -521,10 +553,7 @@ export function App() {
   const identityCard = (
     <section className="panel" aria-labelledby="identity-heading">
       <div className="panel-head">
-        <h2 id="identity-heading">회원 정보</h2>
-        <span className={`status-label ${active ? "" : "warning"}`}>
-          {access?.label}
-        </span>
+        <h2 id="identity-heading">학교 계정 정보</h2>
       </div>
       <div className="identity-summary">
         <span className="avatar avatar-large">
@@ -532,7 +561,7 @@ export function App() {
         </span>
         <div>
           <h3>{profile.displayName}</h3>
-          <p>{profile.membership.roleLabel || "회원 명부 미등록"}</p>
+          <p>{profile.department || "학교 계정"}</p>
         </div>
       </div>
       <dl className="detail-list">
@@ -545,10 +574,6 @@ export function App() {
           <div><dt>학교 인증 유효기간</dt><dd>{formatDate(profile.universityVerifiedUntil)}</dd></div>
         ) : null}
         <div>
-          <dt>회원 명부</dt>
-          <dd>{access?.suspended ? "이용 정지" : access?.rosterExpired ? "갱신 대기" : access?.rosterMatched ? development ? "테스트 명부 일치" : "회원 확인 완료" : "회원 명부 미등록"}</dd>
-        </div>
-        <div>
           <dt>Minecraft</dt>
           <dd>{profile.minecraft?.name ?? "연결되지 않음"}</dd>
         </div>
@@ -556,7 +581,7 @@ export function App() {
       <p className="helper">
         {development
           ? "가상 회원 데이터이며 실제 학교 인증이나 운영 서버 권한을 의미하지 않습니다."
-          : access?.message}
+          : "학교 인증은 신원 확인에 사용하며, 소모임 회원 자격은 별도로 확인합니다."}
       </p>
       {universityEnabled && access?.schoolExpired ? (
         <div className="identity-reauth">
@@ -597,7 +622,7 @@ export function App() {
               <span className="account-eyebrow">{link.status === "linked" ? "연결된 계정" : "연결할 계정"}</span>
               <h3>{link.minecraftName}</h3>
               <p>정품 Java Edition</p>
-              <div className="account-check"><Icon name="check" /><span>{link.status === "linked" ? "Overworld 회원 계정에 연결됨" : "학교 계정과 연결할 대상을 확인해 주세요"}</span></div>
+              <div className="account-check"><Icon name="check" /><span>{link.status === "linked" ? "Overworld 계정에 연결됨" : "학교 계정과 연결할 대상을 확인해 주세요"}</span></div>
               {link.status === "pending" ? <small>요청 유효기간 · {formatDate(link.expiresAt)}</small> : null}
             </div>
           </div>
@@ -609,10 +634,10 @@ export function App() {
             <p className="helper warning">
               연결 요청이 만료되었습니다. 게임에서 /passport 로 새 링크를 받아 주세요.
             </p>
-          ) : !active ? (
+          ) : !minecraftAccess?.allowed ? (
             <div>
-              <p className="helper warning">{development ? "회원 자격이 확인되지 않았습니다. 운영자에게 명부 확인을 요청해 주세요." : access?.message}</p>
-              {access?.schoolExpired && view !== "dashboard" ? <button className="text-button" onClick={() => setView("dashboard")}>회원 정보에서 학교 인증 갱신</button> : null}
+              <p className="helper warning">{serversState === "loading" ? "서버 접속 권한을 확인하고 있습니다." : serversState === "error" ? "서버 접속 권한을 확인하지 못했습니다. 새로고침 후 다시 시도해 주세요." : minecraftAccess?.message}</p>
+              {access?.schoolExpired && view !== "dashboard" ? <button className="text-button" onClick={() => setView("dashboard")}>학교 계정 정보에서 인증 갱신</button> : null}
             </div>
           ) : link.webConfirmed ? (
             <div className="command-block" role="status">
@@ -664,8 +689,8 @@ export function App() {
             <span className="account-eyebrow">연결된 계정</span>
             <h3>{profile.minecraft.name}</h3>
             <p>정품 Java Edition</p>
-            <div className="account-check"><Icon name="check" /><span>Overworld 회원 계정에 연결됨</span></div>
-            <small>게임에 접속하면 회원 권한에 따라 서버로 이동합니다.</small>
+            <div className="account-check"><Icon name="check" /><span>Overworld 계정에 연결됨</span></div>
+            <small>게임에 접속하면 접속 권한에 따라 서버로 이동합니다.</small>
           </div>
         </div>
       ) : (
@@ -707,7 +732,7 @@ export function App() {
 
   const discordCard = <DiscordCard
     connection={profile.discordConnection} link={discordLink} linkError={discordLinkError}
-    missingToken={missingDiscordToken} enabled={discordEnabled} active={active} schoolExpired={Boolean(access?.schoolExpired)} disabled={disabled}
+    missingToken={missingDiscordToken} enabled={discordEnabled} active={canLinkDiscord} schoolExpired={Boolean(access?.schoolExpired)} disabled={disabled}
     consent={<PrivacyConsent notice={privacy} accepted={consentAccepted} onChange={setConsentAccepted} loading={privacyLoading} error={privacyError} onRetry={() => void loadPrivacy()} disabled={disabled} />}
     consentReady={consentReady}
     onConfirm={() => void perform("discord-confirm", async () => {
@@ -725,23 +750,24 @@ export function App() {
     <section className="panel" aria-labelledby="servers-heading">
       <div className="panel-head">
         <h2 id="servers-heading">접속 가능한 서버</h2>
-        <small>{servers.length}개</small>
+        <small>{serversState === "ready" ? `${servers.length}개` : serversState === "loading" ? "확인 중" : "확인 필요"}</small>
       </div>
-      {servers.length ? (
+      {serversState !== "ready" ? (
+        <div className="empty-state" role="status"><h3>{serversState === "loading" ? "접속 권한을 확인하고 있습니다" : "접속 권한을 확인하지 못했습니다"}</h3>{serversState === "error" ? <p>새로고침하여 현재 접속할 수 있는 서버를 다시 확인해 주세요.</p> : null}</div>
+      ) : servers.length ? (
         <ul className="server-list">
           {servers.map((server) => (
             <li key={server.id}>
               <div>
                 <h3>{server.label}</h3>
               </div>
-              <span className="status-label">허용됨</span>
             </li>
           ))}
         </ul>
       ) : (
         <div className="empty-state">
-          <h3>아직 허용된 서버가 없습니다.</h3>
-          <p>{!development && !active ? access?.message : "회원 명부와 계정 연결 상태를 확인해 주세요."}</p>
+          <h3>접속 가능한 서버가 없습니다</h3>
+          <p>{access?.suspended ? "서버 이용이 정지되어 있습니다. 운영자에게 문의해 주세요." : access?.schoolExpired ? "학교 인증이 만료되었습니다. 학교 계정 정보에서 인증을 갱신해 주세요." : "서버별 접근 설정에 따라 목록이 표시됩니다. 권한 확인이 필요하면 운영자에게 문의해 주세요."}</p>
         </div>
       )}
       <p className="helper card-footnote">
@@ -760,7 +786,7 @@ export function App() {
       activeView={view}
       onNavigate={(id) => setView(id as View)}
       displayName={profile.displayName}
-      description={active ? profile.membership.roleLabel : access?.label ?? "회원 확인 대기"}
+      description={access?.label ?? "회원 확인 대기"}
       development={development}
       onLogout={logout}
       busy={disabled}
@@ -775,7 +801,7 @@ export function App() {
                 ? "본인 계정을 확인하면 게임 접속을 확인해 자동으로 연결합니다."
                 : view === "discord"
                   ? "학교 계정과 연결된 Discord 계정과 회원 역할을 확인합니다."
-                  : "회원에게 허용된 서버를 확인합니다."}
+                  : "현재 접속할 수 있는 서버를 확인합니다."}
           </p>
         </div>
         <button
@@ -787,6 +813,8 @@ export function App() {
       </div>
       {alerts}
       {view === "dashboard" ? (
+        <>
+        <MembershipCard profile={profile} development={development} />
         <div className="dashboard-grid">
           <div className="stack">
             {minecraftCard}
@@ -814,6 +842,7 @@ export function App() {
             </section>
           </div>
         </div>
+        </>
       ) : (
         <div className="single-content">
           {view === "minecraft"

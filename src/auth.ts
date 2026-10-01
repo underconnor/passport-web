@@ -30,8 +30,8 @@ export function linkCallbackError(code: string | null): string {
     link_consumed: "이미 처리되거나 취소된 연결 요청입니다. 게임에서 새 링크를 받아 주세요.",
     link_not_found: "연결 요청을 찾을 수 없습니다. 게임에서 새 링크를 받아 주세요.",
     web_confirmation_consumed: "웹 확인은 이미 완료되었습니다. 연결 상태를 확인하고 있어요.",
-    membership_required: "회원 명부가 확인되지 않아 계정을 연결하지 못했습니다. 소모임 운영자에게 문의해 주세요.",
-    subject_already_linked: "이 회원 계정에는 다른 Minecraft 계정이 연결되어 있습니다. 운영자에게 문의해 주세요.",
+    membership_required: "접속 가능한 서버가 없어 게임 계정을 연결할 수 없습니다. 학교 인증과 접속 서버를 확인해 주세요.",
+    subject_already_linked: "이 학교 계정에는 다른 Minecraft 계정이 연결되어 있습니다. 운영자에게 문의해 주세요.",
     confirming_session_expired: "연결 확인 시간이 지났습니다. 게임에서 새 링크를 받아 주세요.",
     consent_version_mismatch: "개인정보 안내가 변경되었습니다. 최신 안내를 확인하고 다시 연결해 주세요.",
   };
@@ -54,18 +54,29 @@ function future(value: string | null | undefined, now: number): boolean {
 export function accountAccess(profile: Profile, now = Date.now()) {
   const schoolVerified = profile.identityProvider === "usaint";
   const schoolExpired = schoolVerified && !future(profile.universityVerifiedUntil, now);
+  const schoolValid = schoolVerified && !schoolExpired;
   const suspended = profile.accessSuspended || profile.membership.status === "suspended" || profile.membership.effectiveStatus === "suspended";
   const rosterMatched = profile.membership.status === "active" && profile.membership.effectiveStatus !== "revoked";
-  const rosterExpired = rosterMatched && (!future(profile.membership.verifiedUntil, now) || (profile.membership.effectiveStatus === "stale" && !schoolExpired));
-  const canAccess = !suspended && rosterMatched && !rosterExpired && !schoolExpired;
-  const label = suspended ? "이용 정지"
-    : schoolExpired ? "학교 인증 만료"
-    : !rosterMatched ? "명부 미등록"
-    : rosterExpired ? "명부 갱신 대기" : "활성 회원";
-  const message = suspended ? "서버 이용이 정지되어 있습니다. 소모임 운영자에게 문의해 주세요."
-    : schoolExpired ? "학교 인증 유효기간이 지났습니다. 학교 계정으로 다시 로그인해 주세요."
-    : !rosterMatched ? "학교 인증은 완료되었지만 회원 명부에서 확인되지 않았습니다. 소모임 운영자에게 명부 확인을 요청해 주세요."
-    : rosterExpired ? "회원 명부의 확인 기간이 지났습니다. 명부가 갱신되면 접속 권한이 다시 반영됩니다."
-    : "회원 상태와 서버별 접근 설정에 따라 접속할 수 있는 서버가 표시됩니다.";
-  return { schoolVerified, schoolExpired, suspended, rosterMatched, rosterExpired, canAccess, label, message };
+  const rosterExpired = rosterMatched && (!future(profile.membership.verifiedUntil, now) || profile.membership.effectiveStatus === "stale");
+  const membershipActive = rosterMatched && !rosterExpired;
+  // Club membership is independent of school identity and per-server authorization.
+  const canLinkDiscord = !suspended && membershipActive && schoolValid;
+  const label = profile.membership.status === "suspended" ? "회원 이용 정지"
+    : !rosterMatched ? "소모임 비회원"
+    : rosterExpired ? "회원 확인 갱신 대기" : "소모임 회원";
+  const message = profile.membership.status === "suspended" ? "소모임 회원 이용이 정지되어 있습니다. 운영자에게 문의해 주세요."
+    : !rosterMatched ? "현재 소모임 회원 명부에서 확인되지 않습니다. 회원이라면 운영자에게 명부 확인을 요청해 주세요."
+    : rosterExpired ? "회원 명부의 확인 기간이 지났습니다. 명부 갱신 후 회원 상태가 반영됩니다."
+    : "Overworld 회원 명부에서 확인되었습니다.";
+  return { schoolVerified, schoolValid, schoolExpired, suspended, rosterMatched, rosterExpired, membershipActive, canLinkDiscord, label, message };
+}
+
+export function minecraftEligibility(profile: Profile, serverCount: number, development = false, now = Date.now()) {
+  const access = accountAccess(profile, now);
+  const schoolReady = access.schoolValid || (development && profile.identityProvider === "development");
+  const message = access.suspended ? "서버 이용이 정지되어 있습니다. 소모임 운영자에게 문의해 주세요."
+    : !schoolReady ? "학교 인증을 확인해야 합니다. 학교 계정으로 다시 로그인해 주세요."
+    : serverCount < 1 ? "접속 가능한 서버가 없어 게임 계정을 연결할 수 없습니다."
+    : "";
+  return { allowed: !access.suspended && schoolReady && serverCount > 0, message };
 }

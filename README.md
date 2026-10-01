@@ -1,6 +1,6 @@
 # Passport Web
 
-Overworld 회원 인증과 Minecraft 계정 연결을 위한 독립 React·TypeScript·Vite 앱입니다.
+Overworld 학교 인증과 Minecraft 계정 연결을 위한 독립 React·TypeScript·Vite 앱입니다.
 
 ## 현재 구현
 
@@ -12,7 +12,8 @@ Overworld 회원 인증과 Minecraft 계정 연결을 위한 독립 React·TypeS
 - 같은 출처 API가 제공한 PNG로 Minecraft 머리·전신 표시, 실패 시 기본 아바타
 - Discord 봇의 호출자 전용 연동 링크, 동의·학교 인증으로 연결된 계정 표시
 - Discord 연결과 역할 대기·지급·회수·처리 실패를 분리하고 변경·해제는 관리자 문의로 안내
-- 실제 API 응답에 기반한 회원 상태와 허용 서버 표시
+- 주요 카드에서 소모임 회원 여부와 학교 인증을 별도로 표시
+- `/me/servers`가 반환한 접속 가능 서버만 표시하며, 비회원의 학교 인증 서버도 지원
 - 오류, 만료, 연결 누락, 비활성 회원 처리
 - 학교 인증·회원 명부·이용 정지 상태를 구분하고 학교 인증 만료 시 재인증
 
@@ -33,6 +34,8 @@ npm run dev
 npm run check
 npm run build
 docker build -t passport-web:dev .
+# 별도 루프백 합성 API와 격리 브라우저로 회원/서버 권한 검증
+npm run test:browser-membership
 ```
 
 ## 컨테이너 배포
@@ -56,14 +59,18 @@ Dockerfile은 정적 빌드 결과를 비특권 nginx 사용자로 8080 포트�
 | `GET /v1/me/servers` | 허용 서버 |
 | `GET /v1/me/minecraft-skin` | 연결된 Minecraft 계정의 PNG data URI |
 | `POST /v1/link-sessions/:id/inspect` | 일회용 요청 조회 |
-| `POST /v1/link-sessions/:id/web-confirm` | 이미 로그인한 회원의 필수 동의와 연결 확인 |
+| `POST /v1/link-sessions/:id/web-confirm` | 이미 로그인한 사용자의 필수 동의와 게임 연결 확인 |
 | `POST /v1/link-sessions/:id/skin` | 본문 token과 CSRF로 연결 대상의 PNG data URI 조회 |
 | `POST /v1/discord/link-sessions/:id/inspect` | 봇이 발급한 Discord 연동 요청과 대상 계정 조회 |
 | `POST /v1/discord/link-sessions/:id/web-confirm` | 이미 로그인한 활성 회원의 Discord 연결 확인 |
 
+학교 인증·소모임 회원·서버 권한은 별도 상태입니다. 서버 목록은 `GET /v1/me/servers`의 `{ servers: [{ id, label }] }` 응답만 사용하고 전체 서버 명부를 요청하거나 접속 불가 서버를 표시하지 않습니다. 빈 배열이면 **접속 가능한 서버가 없습니다**로 표시합니다. 목록 재조회 중·실패 상태는 빈 목록과 구분하며, 실패 시 이전 권한 목록을 숨깁니다. 늦은 프로필·세션 응답이 최신 결과를 덮지 않도록 요청 세대를 검사합니다.
+
+Minecraft 연결은 유효한 학교 인증·비정지·접속 가능 서버 1개 이상이 필요합니다. API가 학교 인증 대상 서버를 반환하면 비회원 또는 명부 갱신 대기 상태에서도 연결할 수 있습니다. 개발용 신원은 명시적인 개발 인증 모드와 API 반환 서버가 모두 있을 때만 테스트 연결을 제공합니다. 최종 허가는 API가 다시 검증합니다. Discord 연결은 계속 유효한 학교 인증과 활성 소모임 회원 자격을 요구합니다.
+
 연결 URL은 `/link/:id#token=...`입니다. 토큰은 최초 로드 때 메모리로 읽은 뒤 주소에서 즉시 제거하며, API에는 POST body로만 전송합니다. localStorage·sessionStorage·분석 도구에 기록하지 않습니다. 새로고침으로 메모리의 토큰을 잃으면 게임에서 원래 링크를 다시 열어야 합니다. 웹 확인 후에는 프록시가 현재 게임 세션을 확인해 연결과 이동을 진행합니다. 브라우저는 보이는 동안 inspect를 직렬 조회하며 연결 완료 시 프로필을 갱신합니다. 게임 입장 여부를 추측하거나 게임용 서비스 API를 호출하지 않습니다.
 
-학교 로그인 시작 요청에는 `consent: { accepted: true, version }`이 필요합니다. 현재 Minecraft 링크의 ID·토큰을 함께 보내면 API가 학교 인증 후 해당 연결을 자동 확인합니다. 이미 로그인한 회원은 web-confirm에 동일한 동의와 token을 보냅니다. 체크박스는 미선택으로 시작하며, 안내 조회 실패·거절 상태에서는 요청하지 않습니다. 서버가 버전 변경을 알리면 최신 안내를 다시 불러와 동의를 해제합니다. 보관·철회 문구는 API 내용만 표시합니다.
+학교 로그인 시작 요청에는 `consent: { accepted: true, version }`이 필요합니다. 현재 Minecraft 링크의 ID·토큰을 함께 보내면 API가 학교 인증 후 해당 연결을 자동 확인합니다. 이미 로그인한 사용자는 web-confirm에 동일한 동의와 token을 보냅니다. 체크박스는 미선택으로 시작하며, 안내 조회 실패·거절 상태에서는 요청하지 않습니다. 서버가 버전 변경을 알리면 최신 안내를 다시 불러와 동의를 해제합니다. 보관·철회 문구는 API 내용만 표시합니다.
 
 학교 토큰과 비밀번호는 프론트에서 받지 않습니다. `auth_error`와 `link_error`는 최초 로드 때 읽고 query를 지우며 알려진 코드에 대한 한국어 안내만 표시합니다. 자동 연결 실패는 유효한 학교 로그인 상태를 제거하지 않습니다. 서버가 반환한 로그인 URL은 정확한 학교 HTTPS 로그인 주소인지 확인한 뒤 이동합니다.
 

@@ -15,7 +15,8 @@
     "test:browser-link": "npm run build && node --test test/link-completion.browser.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "test:browser-consent": "npm run build && node --test test/consent-skin.browser.mjs",
-    "test:browser-discord": "npm run build && node --test test/discord-connection.browser.mjs"
+    "test:browser-discord": "npm run build && node --test test/discord-connection.browser.mjs",
+    "test:browser-membership": "npm run build && node --test test/membership-servers.browser.mjs"
   },
   "dependencies": {
     "react": "19.3.0",
