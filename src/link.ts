@@ -7,6 +7,7 @@ const token = fragment.get("token");
 // Capture the safe callback code before removing the query. School credentials
 // are handled by the API callback and never passed to the frontend.
 export const universityAuthError = new URLSearchParams(window.location.search).get("auth_error");
+export const automaticLinkError = new URLSearchParams(window.location.search).get("link_error");
 if (window.location.hash || window.location.search) {
   window.history.replaceState(null, "", pathname);
 }

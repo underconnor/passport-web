@@ -20,7 +20,22 @@ export function universityCallbackError(code: string | null): string {
   if (code === null) return "";
   // Never render an arbitrary callback value, school token, URL, or server trace.
   const key = code.startsWith("university_") ? code.slice("university_".length) : code;
-  return callbackErrors[key] ?? "학교 로그인을 완료하지 못했습니다. 다시 시도해 주세요.";
+  return Object.hasOwn(callbackErrors, key) ? callbackErrors[key] : "학교 로그인을 완료하지 못했습니다. 다시 시도해 주세요.";
+}
+
+export function linkCallbackError(code: string | null): string {
+  if (code === null) return "";
+  const messages: Record<string, string> = {
+    link_expired: "연결 요청이 만료되었습니다. 게임에서 새 링크를 받아 주세요.",
+    link_consumed: "이미 처리되거나 취소된 연결 요청입니다. 게임에서 새 링크를 받아 주세요.",
+    link_not_found: "연결 요청을 찾을 수 없습니다. 게임에서 새 링크를 받아 주세요.",
+    web_confirmation_consumed: "웹 확인은 이미 완료되었습니다. 연결 상태를 확인하고 있어요.",
+    membership_required: "회원 명부가 확인되지 않아 계정을 연결하지 못했습니다. 소모임 운영자에게 문의해 주세요.",
+    subject_already_linked: "이 회원 계정에는 다른 Minecraft 계정이 연결되어 있습니다. 운영자에게 문의해 주세요.",
+    confirming_session_expired: "연결 확인 시간이 지났습니다. 게임에서 새 링크를 받아 주세요.",
+    consent_version_mismatch: "개인정보 안내가 변경되었습니다. 최신 안내를 확인하고 다시 연결해 주세요.",
+  };
+  return Object.hasOwn(messages, code) ? messages[code] : "계정 연결을 완료하지 못했습니다. 아래 연결 상태를 확인하고 다시 시도해 주세요.";
 }
 
 export function schoolLoginDestination(value: string): string {
@@ -51,6 +66,6 @@ export function accountAccess(profile: Profile, now = Date.now()) {
     : schoolExpired ? "학교 인증 유효기간이 지났습니다. 학교 계정으로 다시 로그인해 주세요."
     : !rosterMatched ? "학교 인증은 완료되었지만 회원 명부에서 확인되지 않았습니다. 소모임 운영자에게 명부 확인을 요청해 주세요."
     : rosterExpired ? "회원 명부의 확인 기간이 지났습니다. 명부가 갱신되면 접속 권한이 다시 반영됩니다."
-    : "회원 명부에 따라 접속할 수 있는 서버가 표시됩니다.";
+    : "회원 상태와 서버별 접근 설정에 따라 접속할 수 있는 서버가 표시됩니다.";
   return { schoolVerified, schoolExpired, suspended, rosterMatched, rosterExpired, canAccess, label, message };
 }

@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { privacy } from './fixtures.mjs';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -21,6 +22,8 @@ function reset(mode) {
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, 'http://127.0.0.1');
   const json = (status, value) => { response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); response.end(JSON.stringify(value)); };
+  if (url.pathname === '/v1/privacy') return json(200, privacy);
+  if (url.pathname.endsWith('/skin') || url.pathname === '/v1/me/minecraft-skin') return json(200, { dataUrl: null, model: null });
   if (url.pathname === '/v1/auth/session') {
     state.authReads++;
     return json(200, { authenticated: state.authenticated, authMode: 'university', csrfToken: state.authenticated ? 'synthetic-csrf' : 'synthetic-fresh-csrf' });
@@ -83,12 +86,13 @@ test('link completion updates automatically without commands or losing unrelated
       await browser('open', url); await browser('wait', '--load', 'networkidle');
       await browser('set', 'viewport', '1440', '900');
       const snapshot = await browser('snapshot', '-i');
-      assert.ok(snapshot.includes('내 계정으로 연결 확인'));
+      assert.ok(snapshot.includes('동의하고 이 Minecraft 계정 연결'));
       assert.equal(await inspect('Boolean(document.querySelector(".vite-error-overlay, [data-nextjs-dialog]"))'), false);
       assert.equal(await browser('errors'), '');
       assert.equal(await inspect('location.hash'), '');
       assert.equal(await inspect('localStorage.length + sessionStorage.length'), 0);
-      await browser('find', 'role', 'button', 'click', '--name', '내 계정으로 연결 확인');
+      await browser('find', 'role', 'checkbox', 'check', '--name', '개인정보 수집·이용에 동의합니다.');
+      await browser('find', 'role', 'button', 'click', '--name', '동의하고 이 Minecraft 계정 연결');
       await until("document.body.textContent.includes('게임 접속을 확인하고 있어요')");
       assert.equal(await inspect("document.body.textContent.includes('/passport confirm')"), false);
       await browser('screenshot', '/tmp/passport-web-auto-pending.png');
@@ -116,7 +120,8 @@ test('link completion updates automatically without commands or losing unrelated
       reset('immediate'); expiry = new Date(Date.now() + 300_000).toISOString();
       await browser('open', 'about:blank');
       await browser('open', url); await browser('wait', '--load', 'networkidle');
-      await browser('find', 'role', 'button', 'click', '--name', '내 계정으로 연결 확인');
+      await browser('find', 'role', 'checkbox', 'check', '--name', '개인정보 수집·이용에 동의합니다.');
+      await browser('find', 'role', 'button', 'click', '--name', '동의하고 이 Minecraft 계정 연결');
       await until("document.body.textContent.includes('계정 연결이 완료되었습니다. 게임에 접속 중이면')");
       assert.equal(await inspect("document.body.textContent.includes('/passport confirm')"), false);
       assert.equal(state.profileReads, 2); assert.equal(state.confirmations, 1);
@@ -128,7 +133,8 @@ test('link completion updates automatically without commands or losing unrelated
       await until("document.body.textContent.includes('로그인이 만료되었습니다')");
       assert.equal(await inspect("document.body.textContent.includes('자동 연결 테스트 회원')"), false);
       assert.equal(await inspect('localStorage.length + sessionStorage.length'), 0);
-      await browser('find', 'role', 'button', 'click', '--name', '숭실대학교 통합로그인');
+      await browser('find', 'role', 'checkbox', 'check', '--name', '개인정보 수집·이용에 동의합니다.');
+      await browser('find', 'role', 'button', 'click', '--name', '동의하고 학교 계정으로 연결');
       await browser('wait', '--load', 'networkidle');
       assert.equal(state.csrf, 'synthetic-fresh-csrf');
     });

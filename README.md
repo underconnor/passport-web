@@ -7,7 +7,9 @@ Overworld 회원 인증과 Minecraft 계정 연결을 위한 독립 React·TypeS
 - API의 HttpOnly 세션과 CSRF 토큰을 사용하는 로그인 상태 조회
 - u-SAINT 로그인 시작, 학교 로그인 화면 이동, API 콜백 오류와 재시도 안내
 - 서버가 명시적으로 허용한 환경에서만 표시되는 가상 회원·미등록 회원 개발 로그인
-- Minecraft 일회용 링크 확인, 웹 연결 확인, 게임 확인 대기·완료 상태
+- 서버가 제공한 개인정보 안내와 버전에 대한 필수 동의, 변경된 안내 재동의
+- Minecraft 일회용 링크의 대상 확인, 학교 인증 후 자동 연결 대기·완료 표시
+- 같은 출처 API가 제공한 PNG로 Minecraft 머리·전신 표시, 실패 시 기본 아바타
 - Discord 숫자 사용자 ID 입력·수정·삭제와 소유권 미확인 표시
 - 실제 API 응답에 기반한 회원 상태와 허용 서버 표시
 - 오류, 만료, 연결 누락, 비활성 회원 처리
@@ -45,24 +47,31 @@ Dockerfile은 정적 빌드 결과를 비특권 nginx 사용자로 8080 포트�
 | 요청 | 목적 |
 | --- | --- |
 | `GET /v1/auth/session` | 세션, CSRF, 사용 가능한 인증 모드 |
+| `GET /v1/privacy` | 서버가 관리하는 수집 목적·항목·보관·철회 안내와 버전 |
 | `POST /v1/auth/development` | 개발용 가상 신원 선택 |
-| `POST /v1/auth/university/start` | CSRF와 선택적 Minecraft 링크 문맥을 전달해 학교 로그인 URL 받기 |
+| `POST /v1/auth/university/start` | CSRF, 필수 동의와 선택적 Minecraft 링크 문맥으로 학교 로그인 URL 받기 |
 | `POST /v1/auth/logout` | 세션 종료 |
 | `GET /v1/me` | 내 프로필 |
 | `GET /v1/me/servers` | 허용 서버 |
+| `GET /v1/me/minecraft-skin` | 연결된 Minecraft 계정의 PNG data URI |
 | `PUT /v1/me/discord-id` / `DELETE /v1/me/discord-id` | 직접 입력한 ID 저장·삭제 |
 | `POST /v1/link-sessions/:id/inspect` | 일회용 요청 조회 |
-| `POST /v1/link-sessions/:id/web-confirm` | 웹에서 연결 확인 |
+| `POST /v1/link-sessions/:id/web-confirm` | 이미 로그인한 회원의 필수 동의와 연결 확인 |
+| `POST /v1/link-sessions/:id/skin` | 본문 token과 CSRF로 연결 대상의 PNG data URI 조회 |
 
-연결 URL은 `/link/:id#token=...`입니다. 토큰은 최초 로드 때 메모리로 읽은 뒤 주소에서 즉시 제거하며, API에는 POST body로만 전송합니다. localStorage·sessionStorage·분석 도구에 기록하지 않습니다. 새로고침으로 메모리의 토큰을 잃으면 게임에서 원래 링크를 다시 열어야 합니다. 웹 확인 후에도 같은 Minecraft 계정에서 `/passport confirm`을 실행해야 연결이 완료됩니다.
+연결 URL은 `/link/:id#token=...`입니다. 토큰은 최초 로드 때 메모리로 읽은 뒤 주소에서 즉시 제거하며, API에는 POST body로만 전송합니다. localStorage·sessionStorage·분석 도구에 기록하지 않습니다. 새로고침으로 메모리의 토큰을 잃으면 게임에서 원래 링크를 다시 열어야 합니다. 웹 확인 후에는 프록시가 현재 게임 세션을 확인해 연결과 이동을 진행합니다. 브라우저는 보이는 동안 inspect를 직렬 조회하며 연결 완료 시 프로필을 갱신합니다. 게임 입장 여부를 추측하거나 게임용 서비스 API를 호출하지 않습니다.
 
-학교 로그인 시작 요청에는 현재 Minecraft 링크의 ID·토큰만 선택적으로 포함합니다. API가 암호화해 보관한 뒤 성공 시 원래 연결 URL로 돌려보냅니다. 학교 토큰과 비밀번호는 프론트에서 받지 않습니다. `/?auth_error=...`로 돌아오면 최초 로드 때 오류 코드만 읽고 query를 지우며, 알려진 코드에 대한 한국어 안내만 표시합니다. 서버가 반환한 로그인 URL은 정확한 학교 HTTPS 로그인 주소인지 확인한 뒤 이동합니다.
+학교 로그인 시작 요청에는 `consent: { accepted: true, version }`이 필요합니다. 현재 Minecraft 링크의 ID·토큰을 함께 보내면 API가 학교 인증 후 해당 연결을 자동 확인합니다. 이미 로그인한 회원은 web-confirm에 동일한 동의와 token을 보냅니다. 체크박스는 미선택으로 시작하며, 안내 조회 실패·거절 상태에서는 요청하지 않습니다. 서버가 버전 변경을 알리면 최신 안내를 다시 불러와 동의를 해제합니다. 보관·철회 문구는 API 내용만 표시합니다.
+
+학교 토큰과 비밀번호는 프론트에서 받지 않습니다. `auth_error`와 `link_error`는 최초 로드 때 읽고 query를 지우며 알려진 코드에 대한 한국어 안내만 표시합니다. 자동 연결 실패는 유효한 학교 로그인 상태를 제거하지 않습니다. 서버가 반환한 로그인 URL은 정확한 학교 HTTPS 로그인 주소인지 확인한 뒤 이동합니다.
+
+스킨은 API가 제공한 제한된 PNG data URI만 canvas에 그립니다. 외부 URL은 사용하지 않으며 클래식·슬림 및 64×32/64×64 이미지를 처리합니다. 스킨 오류는 로그인이나 계정 연결을 막지 않습니다.
 
 Discord ID는 문자열이며 숫자 형식·uint64 범위를 확인합니다. 입력값은 `self_reported`이고 로그인·회원 자격·서버 권한의 근거가 아닙니다.
 
 ## 다음 단계
 
-HTTPS 배포에서 실제 학교 계정 로그인과 회원 시트 대조, 정품 Minecraft 클라이언트의 웹·게임 확인을 끝까지 검증합니다. 분리된 앱이므로 다른 저장소 소스를 상대 경로로 참조하지 않습니다.
+변경된 동의·자동 연결 흐름은 API와 함께 배포한 뒤 실제 학교 계정·정품 게임 클라이언트로 확인해야 합니다. 기존 실계정 성공과 새 합성 회귀의 범위는 [검증 기록](docs/verification.md)에 구분합니다. 분리된 앱이므로 다른 저장소 소스를 상대 경로로 참조하지 않습니다.
 
 ## 화면 기준
 

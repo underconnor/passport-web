@@ -36,6 +36,17 @@ export interface LinkSession {
   gameConfirmed: boolean;
 }
 export type LinkSummary = Pick<LinkSession, "id" | "status" | "expiresAt">;
+export interface PrivacyNotice {
+  version: string;
+  purpose: string;
+  items: string[];
+  retention: string;
+  withdrawal: string;
+}
+export interface MinecraftSkin {
+  dataUrl: string | null;
+  model: "classic" | "slim" | null;
+}
 export interface Server {
   id: string;
   label: string;
@@ -46,6 +57,9 @@ export interface UniversityStart {
 }
 
 const messages: Record<string, string> = {
+  consent_required: "개인정보 안내를 읽고 동의를 선택해 주세요.",
+  consent_version_mismatch: "개인정보 안내가 변경되었습니다. 최신 내용을 다시 확인하고 동의해 주세요.",
+  privacy_version_mismatch: "개인정보 안내가 변경되었습니다. 최신 내용을 다시 확인하고 동의해 주세요.",
   session_required: "로그인이 만료되었습니다. 다시 로그인해 주세요.",
   link_consumed:
     "이미 사용되거나 취소된 링크입니다. 게임에서 새 링크를 받아 주세요.",
@@ -92,7 +106,7 @@ export class ApiError extends Error {
     public code: string,
   ) {
     super(
-      messages[code] ??
+      (Object.hasOwn(messages, code) ? messages[code] : undefined) ??
         (status === 401
           ? "먼저 로그인해 주세요."
           : status === 403

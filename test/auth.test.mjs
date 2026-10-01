@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { accountAccess, schoolLoginDestination, universityCallbackError } from '../src/auth.ts';
+import { accountAccess, linkCallbackError, schoolLoginDestination, universityCallbackError } from '../src/auth.ts';
 
 const now = Date.parse('2026-09-30T00:00:00Z');
 const future = '2027-01-01T00:00:00Z';
@@ -24,6 +24,17 @@ test('callback errors use bounded Korean copy and never echo unknown query data'
   assert.match(universityCallbackError('university_token_consumed'), /이미 처리/);
   const arbitrary = 'secret-school-token<script>unsafe</script>';
   assert.ok(!universityCallbackError(arbitrary).includes(arbitrary));
+  for (const key of ['__proto__', 'constructor', 'toString']) assert.equal(typeof universityCallbackError(key), 'string');
+});
+test('automatic linking failure describes recovery without exposing callback values', () => {
+  assert.equal(linkCallbackError(null), '');
+  assert.match(linkCallbackError('link_expired'), /새 링크/);
+  assert.match(linkCallbackError('membership_required'), /회원 명부/);
+  assert.match(linkCallbackError('consent_version_mismatch'), /최신 안내/);
+  assert.match(linkCallbackError('web_confirmation_consumed'), /이미 완료/);
+  assert.equal(linkCallbackError('unknown-sensitive-value'), linkCallbackError('link_confirmation_failed'));
+  assert.ok(!linkCallbackError('unknown-sensitive-value').includes('unknown-sensitive-value'));
+  for (const key of ['__proto__', 'constructor', 'toString']) assert.equal(linkCallbackError(key), linkCallbackError('link_confirmation_failed'));
 });
 test('verified enrolled, leave-of-absence and unknown academic labels use roster membership', () => {
   for (const academicStatus of ['ENROLLED', 'LEAVE_OF_ABSENCE', 'UNKNOWN']) {

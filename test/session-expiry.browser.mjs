@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { privacy } from './fixtures.mjs';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -22,6 +23,8 @@ const server = http.createServer(async (request, response) => {
     response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     response.end(JSON.stringify(value));
   };
+  if (url.pathname === '/v1/privacy') return json(200, privacy);
+  if (url.pathname.endsWith('/skin') || url.pathname === '/v1/me/minecraft-skin') return json(200, { dataUrl: null, model: null });
   if (url.pathname === '/v1/auth/session') {
     sessionReads++;
     return json(200, { authenticated, authMode: 'university', csrfToken: authenticated ? 'synthetic-old-csrf' : 'synthetic-new-csrf' });
@@ -84,14 +87,15 @@ test('401 mutations remove private portal state and acquire a fresh login CSRF',
         }
         await browser('wait', '--load', 'networkidle');
         const state = await inspect(`({
-          loginVisible: [...document.querySelectorAll('button')].some(button => button.textContent.includes('숭실대학교 통합로그인') && !button.disabled),
+          loginVisible: [...document.querySelectorAll('button')].some(button => button.textContent.includes('동의하고 학교 계정으로') && button.disabled),
           privateDataRemoved: !['회귀 테스트 회원','회귀 테스트 서버','RegressionOnly','123456789012345678','234567890123456789'].some(value => document.body.textContent.includes(value) || [...document.querySelectorAll('input')].some(input => input.value.includes(value))),
           expiryNotice: document.body.textContent.includes('로그인이 만료되었습니다'),
           storageEmpty: localStorage.length === 0 && sessionStorage.length === 0
         })`);
         assert.deepEqual(state, { loginVisible: true, privateDataRemoved: true, expiryNotice: true, storageEmpty: true });
         assert.ok(sessionReads >= 2, 'refreshes anonymous session after rejection');
-        await browser('find', 'role', 'button', 'click', '--name', '숭실대학교 통합로그인');
+        await browser('find', 'role', 'checkbox', 'check', '--name', '개인정보 수집·이용에 동의합니다.');
+        await browser('find', 'role', 'button', 'click', '--name', '동의하고 학교 계정으로 로그인');
         await browser('wait', '--load', 'networkidle');
         assert.equal(nextLoginCsrf, 'synthetic-new-csrf', 'never reuses profile CSRF for the next login');
         assert.equal(await browser('errors'), '');

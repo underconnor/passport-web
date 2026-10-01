@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useEffectEvent, useState } from "react";
 import type { FormEvent } from "react";
 import { api, ApiError, errorMessage, validDiscordId } from "./api";
-import type { AuthSession, LinkSession, LinkSummary, Profile, Server, UniversityStart } from "./api";
-import { accountAccess, schoolLoginDestination, universityCallbackError } from "./auth";
-import { invalidLinkPath, linkReference, universityAuthError } from "./link";
+import type { AuthSession, LinkSession, LinkSummary, MinecraftSkin, PrivacyNotice, Profile, Server, UniversityStart } from "./api";
+import { accountAccess, linkCallbackError, schoolLoginDestination, universityCallbackError } from "./auth";
+import { automaticLinkError, invalidLinkPath, linkReference, universityAuthError } from "./link";
 import { pollLink } from "./link-polling";
+import { privacyNotice } from "./privacy";
+import { PrivacyConsent } from "./PrivacyConsent";
+import { MinecraftPortrait } from "./MinecraftPortrait";
 import { AppShell, Brand, DevelopmentStrip, Icon } from "./ui";
 import type { IconName } from "./ui";
 type View = "dashboard" | "minecraft" | "discord" | "servers";
@@ -38,10 +41,38 @@ export function App() {
   const [linkPollError, setLinkPollError] = useState("");
   const [error, setError] = useState("");
   const [authError, setAuthError] = useState(() => universityCallbackError(universityAuthError));
+  const [callbackLinkError, setCallbackLinkError] = useState(() => linkCallbackError(automaticLinkError));
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [loading, setLoading] = useState(true);
   const [discordId, setDiscordId] = useState("");
+  const [privacy, setPrivacy] = useState<PrivacyNotice | null>(null);
+  const [privacyLoading, setPrivacyLoading] = useState(true);
+  const [privacyError, setPrivacyError] = useState("");
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [skin, setSkin] = useState<MinecraftSkin | null>(null);
+  const [skinLoading, setSkinLoading] = useState(false);
+
+  const loadPrivacy = useCallback(async (signal?: AbortSignal) => {
+    setPrivacyLoading(true);
+    setConsentAccepted(false);
+    setPrivacy(null);
+    setPrivacyError("");
+    try {
+      const result = privacyNotice(await api<unknown>("/privacy", { signal }));
+      if (!signal?.aborted) setPrivacy(result);
+    } catch {
+      if (!signal?.aborted) setPrivacyError("개인정보 안내를 불러오지 못했습니다. 안내를 다시 확인한 뒤 진행해 주세요.");
+    } finally {
+      if (!signal?.aborted) setPrivacyLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadPrivacy(controller.signal);
+    return () => controller.abort();
+  }, [loadPrivacy]);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     setError("");
@@ -106,6 +137,9 @@ export function App() {
     try {
       await action();
     } catch (failure) {
+      if (failure instanceof ApiError && ["consent_required", "consent_version_mismatch", "privacy_version_mismatch"].includes(failure.code)) {
+        await loadPrivacy();
+      }
       if (failure instanceof ApiError && failure.status === 401) {
         setProfile(null);
         setServers([]);
@@ -114,6 +148,8 @@ export function App() {
         setLinkError("");
         setLinkPollError("");
         setSession(null);
+        setConsentAccepted(false);
+        setSkin(null);
         setView("dashboard");
         try {
           await refresh();
@@ -138,10 +174,36 @@ export function App() {
     ? new Date(link.expiresAt).getTime() <= Date.now()
     : false;
   const disabled = Boolean(busy) || loading;
+  const consentReady = Boolean(privacy && consentAccepted && !privacyLoading);
+  const targetLinkId = !missingToken && !linkError && !linkExpired ? link?.id : null;
+  const minecraftUuid = profile?.minecraft?.uuid;
+  useEffect(() => {
+    const controller = new AbortController();
+    setSkin(null);
+    if (!minecraftUuid && (!targetLinkId || !linkReference?.token || !csrfToken)) {
+      setSkinLoading(false);
+      return;
+    }
+    setSkinLoading(true);
+    const request = targetLinkId
+      ? api<MinecraftSkin>(`/link-sessions/${targetLinkId}/skin`, {
+        method: "POST", body: { token: linkReference?.token }, csrfToken, signal: controller.signal,
+      })
+      : api<MinecraftSkin>("/me/minecraft-skin", { signal: controller.signal });
+    request.then((result) => {
+      if (!controller.signal.aborted) setSkin(result);
+    }).catch(() => {
+      // A cosmetic lookup must never prevent a member from authenticating.
+    }).finally(() => {
+      if (!controller.signal.aborted) setSkinLoading(false);
+    });
+    return () => controller.abort();
+  }, [minecraftUuid, targetLinkId, csrfToken]);
 
   const pollingResult = useEffectEvent((current: LinkSession) => {
     setLink((previous) => previous?.id === current.id && previous.status === "linked" ? previous : current);
     setLinkPollError("");
+    if (current.status === "linked") setCallbackLinkError("");
     return current.status === "linked" ? "stop" as const : "continue" as const;
   });
   const pollingError = useEffectEvent((failure: unknown) => {
@@ -221,18 +283,26 @@ export function App() {
   const universityEnabled = session?.authMode === "university";
   const schoolLogin = () =>
     void perform("university", async () => {
+      if (!consentReady || !privacy) throw new ApiError(400, "consent_required");
       setAuthError("");
       const result = await api<UniversityStart>("/auth/university/start", {
         method: "POST",
-        body: linkReference?.token && !linkError && !linkExpired
-          ? { link: { id: linkReference.id, token: linkReference.token } }
-          : {},
+        body: {
+          consent: { accepted: true, version: privacy.version },
+          ...(targetLinkId && linkReference?.token ? { link: { id: targetLinkId, token: linkReference.token } } : {}),
+        },
         csrfToken,
       });
       window.location.assign(schoolLoginDestination(result.url));
     });
   const alerts = (
     <>
+      {callbackLinkError && !linkError ? (
+        <div className="notice notice-error" role="alert">
+          <div><strong>Minecraft 연결을 확인해 주세요</strong><p>{callbackLinkError}</p></div>
+          <button className="text-button" onClick={() => setCallbackLinkError("")}>닫기</button>
+        </div>
+      ) : null}
       {authError ? (
         <div className="notice notice-error" role="alert">
           <div>
@@ -276,6 +346,7 @@ export function App() {
   const logout = () =>
     void perform("logout", async () => {
       await api("/auth/logout", { method: "POST", csrfToken });
+      setConsentAccepted(false);
       await refresh();
       setView("dashboard");
       setNotice("로그아웃했습니다.");
@@ -288,11 +359,10 @@ export function App() {
         <main className="login-shell">
           <section className="login-card" aria-busy={loading}>
             <Brand large />
-            <h1>Overworld를 한곳에서</h1>
+            <h1>{targetLinkId ? "내 Minecraft 계정 연결" : "Overworld에 오신 것을 환영해요"}</h1>
             <p className="login-description">
-              회원 자격과 Minecraft 계정을
-              <br />
-              학교 계정으로 연결하고 관리하세요.
+              {targetLinkId ? "아래 계정이 본인 계정인지 확인해 주세요." : "학교 계정으로 회원 자격을 확인하고"}
+              <br />{targetLinkId ? "학교 인증을 마치면 게임에 자동으로 연결됩니다." : "Minecraft와 Discord 정보를 관리하세요."}
             </p>
             {loading ? (
               <div className="login-loading" role="status">
@@ -310,11 +380,15 @@ export function App() {
                           {linkError ||
                             "게임 채팅에서 원래 연결 링크를 다시 열어 주세요."}
                         </p>
+                        <a className="recovery-link" href="/">내 계정 페이지로 이동</a>
                       </>
                     ) : link ? (
                       <>
-                        <strong>{link.minecraftName} 계정 연결</strong>
-                        <p>로그인한 뒤 본인 계정인지 확인하면 게임 접속을 확인해 연결합니다.</p>
+                        <div className="minecraft-identity">
+                          <MinecraftPortrait skin={skin} name={link.minecraftName} loading={skinLoading} />
+                          <div><small>연결할 Minecraft 계정</small><strong>{link.minecraftName}</strong><p>정품 Java 계정</p></div>
+                        </div>
+                        <p className="target-reminder">본인 계정이 아니라면 진행하지 마세요. 게임 접속을 유지해 주세요.</p>
                       </>
                     ) : (
                       <p>연결 요청을 확인하고 있습니다.</p>
@@ -344,12 +418,13 @@ export function App() {
                     </>
                   ) : universityEnabled ? (
                     <>
-                      <button className="primary full" disabled={disabled} onClick={schoolLogin}>
-                        {busy === "university" ? "학교 로그인으로 이동 중…" : "숭실대학교 통합로그인"}
+                      <PrivacyConsent notice={privacy} accepted={consentAccepted} onChange={setConsentAccepted} loading={privacyLoading} error={privacyError} onRetry={() => void loadPrivacy()} disabled={disabled} />
+                      <button className="primary full" disabled={disabled || !consentReady || (hasLink && !targetLinkId)} onClick={schoolLogin}>
+                        {busy === "university" ? "학교 로그인으로 이동 중…" : targetLinkId ? "동의하고 학교 계정으로 연결" : "동의하고 학교 계정으로 로그인"}
                         <Icon name="arrow" />
                       </button>
                       <p className="helper login-helper">
-                        학교 로그인 화면에서 인증한 뒤 돌아옵니다.
+                        숭실대학교 공식 로그인 화면으로 이동합니다.
                       </p>
                     </>
                   ) : (
@@ -413,9 +488,12 @@ export function App() {
           : access?.message}
       </p>
       {universityEnabled && access?.schoolExpired ? (
-        <button className="primary identity-reauth" disabled={disabled} onClick={schoolLogin}>
-          {busy === "university" ? "학교 로그인으로 이동 중…" : "학교 인증 갱신하기"}
-        </button>
+        <div className="identity-reauth">
+          <PrivacyConsent notice={privacy} accepted={consentAccepted} onChange={setConsentAccepted} loading={privacyLoading} error={privacyError} onRetry={() => void loadPrivacy()} disabled={disabled} />
+          <button className="primary" disabled={disabled || !consentReady} onClick={schoolLogin}>
+            {busy === "university" ? "학교 로그인으로 이동 중…" : "동의하고 학교 인증 갱신"}
+          </button>
+        </div>
       ) : null}
     </section>
   );
@@ -442,14 +520,14 @@ export function App() {
         </div>
       ) : link ? (
         <>
-          <div className="detail-row">
-            <div>
+          <div className="minecraft-account-preview">
+            <MinecraftPortrait skin={skin} name={link.minecraftName} loading={skinLoading} body />
+            <div className="minecraft-account-copy">
+              <span className="account-eyebrow">{link.status === "linked" ? "연결된 계정" : "연결할 계정"}</span>
               <h3>{link.minecraftName}</h3>
-              <p>
-                {link.status === "linked"
-                  ? "정품 Java 계정 · 연결 완료"
-                  : `정품 Java 계정 · ${formatDate(link.expiresAt)}까지 유효`}
-              </p>
+              <p>정품 Java Edition</p>
+              <div className="account-check"><Icon name="check" /><span>{link.status === "linked" ? "Overworld 회원 계정에 연결됨" : "학교 계정과 연결할 대상을 확인해 주세요"}</span></div>
+              {link.status === "pending" ? <small>요청 유효기간 · {formatDate(link.expiresAt)}</small> : null}
             </div>
           </div>
           {link.status === "linked" ? (
@@ -461,9 +539,10 @@ export function App() {
               연결 요청이 만료되었습니다. 게임에서 /passport 로 새 링크를 받아 주세요.
             </p>
           ) : !active ? (
-            <p className="helper warning">
-              {development ? "회원 자격이 확인되지 않았습니다. 운영자에게 명부 확인을 요청해 주세요." : access?.message}
-            </p>
+            <div>
+              <p className="helper warning">{development ? "회원 자격이 확인되지 않았습니다. 운영자에게 명부 확인을 요청해 주세요." : access?.message}</p>
+              {access?.schoolExpired && view !== "dashboard" ? <button className="text-button" onClick={() => setView("dashboard")}>회원 정보에서 학교 인증 갱신</button> : null}
+            </div>
           ) : link.webConfirmed ? (
             <div className="command-block" role="status">
               <p>웹 확인을 완료했습니다. 게임 접속을 확인하고 있어요.</p>
@@ -471,17 +550,16 @@ export function App() {
             </div>
           ) : (
             <div className="connection-confirm">
-              <p className="helper">
-                표시된 계정이 본인의 Minecraft 계정인지 확인해 주세요.
-              </p>
+              <PrivacyConsent notice={privacy} accepted={consentAccepted} onChange={setConsentAccepted} loading={privacyLoading} error={privacyError} onRetry={() => void loadPrivacy()} disabled={disabled} />
               <button
                 className="primary"
-                disabled={disabled}
+                disabled={disabled || !consentReady}
                 onClick={() =>
                   void perform("confirm", async () => {
+                    if (!privacy || !consentReady) throw new ApiError(400, "consent_required");
                     const result = await api<LinkSummary>(`/link-sessions/${link.id}/web-confirm`, {
                       method: "POST",
-                      body: { token: linkReference?.token },
+                      body: { token: linkReference?.token, consent: { accepted: true, version: privacy.version } },
                       csrfToken,
                     });
                     setLink((current) => current?.id === result.id ? {
@@ -489,10 +567,11 @@ export function App() {
                       gameConfirmed: result.status === "linked" || current.gameConfirmed,
                     } : current);
                     setLinkPollError("");
+                    setCallbackLinkError("");
                   })
                 }
               >
-                내 계정으로 연결 확인
+                동의하고 이 Minecraft 계정 연결
                 <Icon name="arrow" />
               </button>
             </div>
@@ -508,12 +587,15 @@ export function App() {
           </button>
         </>
       ) : profile.minecraft ? (
-        <div className="detail-row">
-          <div>
+        <div className="minecraft-account-preview">
+          <MinecraftPortrait skin={skin} name={profile.minecraft.name} loading={skinLoading} body />
+          <div className="minecraft-account-copy">
+            <span className="account-eyebrow">연결된 계정</span>
             <h3>{profile.minecraft.name}</h3>
-            <p>이 회원 계정에 연결된 정품 Java 계정입니다.</p>
+            <p>정품 Java Edition</p>
+            <div className="account-check"><Icon name="check" /><span>Overworld 회원 계정에 연결됨</span></div>
+            <small>게임에 접속하면 회원 권한에 따라 서버로 이동합니다.</small>
           </div>
-          <span className="status-label">연결 완료</span>
         </div>
       ) : (
         <>
@@ -535,8 +617,8 @@ export function App() {
             <li>
               <span>2</span>
               <div>
-                <strong>웹 확인</strong>
-                <small>회원과 계정 확인</small>
+                <strong>학교 인증</strong>
+                <small>동의 후 학교 계정 로그인</small>
               </div>
             </li>
             <li>
@@ -620,7 +702,6 @@ export function App() {
             <li key={server.id}>
               <div>
                 <h3>{server.label}</h3>
-                <small>{server.id}</small>
               </div>
               <span className="status-label">허용됨</span>
             </li>
@@ -634,7 +715,7 @@ export function App() {
       )}
       <p className="helper card-footnote">
         {profile.minecraft
-          ? "중앙 회원 정책에 따라 서버별 접근 권한이 결정됩니다."
+          ? "회원 상태와 서버별 접근 설정에 따라 접속 권한이 결정됩니다."
           : "서버에 입장하려면 Minecraft 계정 연결을 완료해야 합니다."}
       </p>
     </section>
@@ -658,7 +739,7 @@ export function App() {
           <h1>{currentNavigation.label}</h1>
           <p>
             {view === "dashboard"
-              ? "회원 상태와 연결된 계정을 확인하세요."
+              ? `${profile.displayName}님의 계정과 접속 권한을 확인하세요.`
               : view === "minecraft"
                 ? "본인 계정을 확인하면 게임 접속을 확인해 자동으로 연결합니다."
                 : view === "discord"
@@ -677,12 +758,12 @@ export function App() {
       {view === "dashboard" ? (
         <div className="dashboard-grid">
           <div className="stack">
-            {identityCard}
             {minecraftCard}
+            {serversCard}
             {discordCard}
           </div>
           <div className="stack">
-            {serversCard}
+            {identityCard}
             <section className="panel support-panel">
               <div className="panel-head">
                 <h2>연결이 잘되지 않나요?</h2>
