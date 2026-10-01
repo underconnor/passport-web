@@ -519,7 +519,7 @@ main {
 }
 .membership-main { display: flex; align-items: center; gap: 16px; }
 .membership-symbol { width: 48px; height: 48px; flex-shrink: 0; display: grid; place-items: center; border-radius: 12px; background: var(--selected); }
-.membership-symbol.is-member { background: #e8f1ff; }
+.membership-symbol.is-member { background: #e8f4eb; }
 .membership-main h2, .membership-school > span { color: var(--muted); font-size: 12px; font-weight: 500; }
 .membership-label { display: block; margin: 3px 0 5px; font-size: 24px; line-height: 1.4; letter-spacing: -0.5px; }
 .membership-main p, .membership-school p { color: var(--muted); font-size: 12px; }
@@ -1141,15 +1141,21 @@ input:disabled {
 .minecraft-link-notice strong { font-size: 14px; font-weight: 600; }
 .minecraft-link-notice p { margin-top: 5px; font-size: 12px; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
 .minecraft-link-notice b { color: var(--text); font-weight: 500; }
-.server-connection { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 14px 0 18px; font-size: 12px; }
-.server-connection span { color: var(--muted); }
-.server-connection strong { font-weight: 550; font-variant-numeric: tabular-nums; }
-.servers-panel .server-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.servers-panel .server-list li { justify-content: flex-start; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); min-width: 0; }
+.server-connection { padding: 18px 20px; margin-bottom: 20px; border: 1px solid #dbe4ef; border-radius: 10px; background: #f7faff; }
+.server-address-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.server-address-heading > span { color: #4e5968; font-size: 12px; font-weight: 500; }
+.server-address-heading button { min-height: 30px; padding: 0 10px; font-size: 12px; border-color: #dbe4ef; }
+.server-connection > strong { display: block; margin-top: 10px; color: var(--text); font-size: clamp(23px, 2.5vw, 30px); font-weight: 700; letter-spacing: -.5px; overflow-wrap: anywhere; user-select: all; }
+.server-copy-feedback { min-height: 18px; margin-top: 5px; font-size: 12px; color: var(--success); }
+.server-copy-feedback.warning { color: var(--warning); }
+.servers-panel .server-list { display: flex; flex-direction: column; }
+.servers-panel .server-list li { justify-content: flex-start; gap: 14px; padding: 17px 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: var(--surface); min-width: 0; }
+.servers-panel .server-list li:first-child { padding-top: 4px; }
+.servers-panel .server-list li:last-child { border-bottom: 0; padding-bottom: 0; }
 .server-tile-icon { display: grid; place-items: center; width: 38px; height: 38px; background: var(--background); border-radius: 8px; flex-shrink: 0; }
 .servers-panel .server-list h3 { overflow-wrap: anywhere; font-weight: 600; }
-.servers-panel .server-list small { display: block; margin-top: 5px; font-size: 11px; color: var(--muted); }
-@media (max-width: 600px) { .servers-panel .server-list { grid-template-columns: 1fr; } }
+.servers-panel .server-list small { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); }
+@media (max-width: 600px) { .server-connection { padding: 16px; } .server-connection > strong { font-size: 24px; } }
 
 .stats-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .stats-toolbar h2 { font-size: 18px; font-weight: 650; }

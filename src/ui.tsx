@@ -5,6 +5,7 @@ export type IconName =
   | "dashboard"
   | "book"
   | "check"
+  | "check-success"
   | "settings"
   | "logout"
   | "arrow";

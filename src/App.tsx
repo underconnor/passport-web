@@ -10,6 +10,7 @@ import { privacyNotice } from "./privacy";
 import { PrivacyConsent } from "./PrivacyConsent";
 import { StatsView } from "./StatsView";
 import { AccountStats } from "./AccountStats";
+import { ServerAddress } from "./ServerAddress";
 import { schoolExpiryDate } from "./dates";
 import { GameConsentNotice } from "./GameConsentNotice";
 import { MembershipCard } from "./MembershipCard";
@@ -739,6 +740,7 @@ export function App() {
 
   const serversCard = (
     <section className="panel servers-panel" aria-labelledby="servers-heading">
+      <ServerAddress />
       {!profile.minecraft ? <div className="minecraft-link-notice" role="status">
         <Icon name="book" /><div><strong>Minecraft 계정이 연결되지 않았어요</strong><p>게임에서 <b>overworld.flyjung.kr</b>에 접속하고 인증 링크를 열어 주세요.</p></div>
       </div> : null}
@@ -749,7 +751,6 @@ export function App() {
       {serversState !== "ready" ? (
         <div className="empty-state" role="status"><h3>{serversState === "loading" ? "접속 권한을 확인하고 있습니다" : "접속 권한을 확인하지 못했습니다"}</h3>{serversState === "error" ? <p>새로고침하여 현재 접속할 수 있는 서버를 다시 확인해 주세요.</p> : null}</div>
       ) : servers.length ? (
-        <><div className="server-connection"><span>서버 주소</span><strong>overworld.flyjung.kr</strong></div>
         <ul className="server-list">
           {servers.map((server) => (
             <li key={server.id}>
@@ -757,7 +758,7 @@ export function App() {
               <div><h3>{server.label}</h3><small>Overworld Minecraft</small></div>
             </li>
           ))}
-        </ul></>
+        </ul>
       ) : (
         <div className="empty-state">
           <h3>접속 가능한 서버가 없습니다</h3>

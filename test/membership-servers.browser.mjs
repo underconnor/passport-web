@@ -82,6 +82,7 @@ test('club membership and school server permissions stay independent', { timeout
       assert.equal(await inspect('Boolean(document.querySelector(".vite-error-overlay, [data-nextjs-dialog]"))'), false);
       assert.equal(await browser('errors'), ''); await browser('console');
       assert.equal(await inspect('document.querySelector(".membership-label").textContent'), 'Overworld 소모임 회원입니다.');
+      assert.equal(await inspect('getComputedStyle(document.querySelector(".membership-symbol.is-member")).backgroundColor'), 'rgb(232, 244, 235)');
       assert.equal(await inspect('document.querySelector(".membership-school strong").textContent'), 'u-SAINT 인증 완료');
       assert.deepEqual(await serverNames(), ['합성 회원 서버']);
       assert.equal(await inspect('document.querySelector(".minecraft-link-notice strong").textContent'), 'Minecraft 계정이 연결되지 않았어요');
@@ -92,6 +93,41 @@ test('club membership and school server permissions stay independent', { timeout
       assert.equal(await inspect('getComputedStyle(document.querySelector(".app-sidebar")).width'), '216px');
       assert.equal(await inspect('getComputedStyle(document.querySelector(".topbar")).height'), '64px');
       await browser('screenshot', '/tmp/passport-web-membership-desktop.png');
+    });
+    await t.test('server address is prominent and copy feedback does not change the allowed vertical list', async () => {
+      const second = { id: 'second', label: '합성 건축 서버' };
+      reset({ servers: [{ id: 'member', label: '합성 회원 서버' }, second] }); await open(origin); await browser('set', 'viewport', '1440', '900');
+      await browser('screenshot', '/tmp/passport-server-ux-member-desktop.png');
+      await click('접속 서버');
+      assert.equal(await inspect('document.querySelector(".server-connection strong").textContent'), 'overworld.flyjung.kr');
+      assert.ok(await inspect('parseFloat(getComputedStyle(document.querySelector(".server-connection strong")).fontSize) >= 28'));
+      assert.equal(await inspect('getComputedStyle(document.querySelector(".server-list")).flexDirection'), 'column');
+      const rows = await inspect('[...document.querySelectorAll(".server-list li")].map(item => ({ top: item.getBoundingClientRect().top, left: item.getBoundingClientRect().left, bottom: item.getBoundingClientRect().bottom }))');
+      assert.equal(rows[0].left, rows[1].left); assert.ok(rows[1].top >= rows[0].bottom);
+      // Stub only the browser clipboard boundary; no personal data or system clipboard is read.
+      await browser('eval', 'Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async value => { window.copiedServerAddress = value; } } })');
+      await click('주소 복사'); await until('document.querySelector(".server-copy-feedback").textContent === "서버 주소를 복사했습니다."');
+      assert.equal(await inspect('window.copiedServerAddress'), 'overworld.flyjung.kr');
+      await browser('eval', 'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+      await browser('set', 'viewport', '1439', '899'); await browser('set', 'viewport', '1440', '900');
+      await browser('snapshot', '-i');
+      await browser('screenshot', '/tmp/passport-server-ux-servers-desktop.png');
+      await browser('eval', 'Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => { throw new DOMException("denied", "NotAllowedError"); } } })');
+      await browser('click', '.server-address-heading button');
+      await until('document.querySelector(".server-copy-feedback").textContent.includes("복사할 수 없습니다.")');
+      assert.deepEqual(await serverNames(), ['합성 회원 서버', second.label]);
+      await browser('set', 'viewport', '390', '844');
+      assert.equal(await inspect('document.documentElement.scrollWidth <= innerWidth'), true);
+      assert.equal(await inspect('getComputedStyle(document.querySelector(".server-list")).flexDirection'), 'column');
+      await browser('eval', 'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+      await browser('screenshot', '/tmp/passport-server-ux-servers-mobile.png', '--full');
+      reset({ servers: [], member: false }); await open(origin); await click('접속 서버');
+      assert.equal(await inspect('document.querySelector(".server-connection strong").textContent'), 'overworld.flyjung.kr');
+      assert.equal(await empty(), '접속 가능한 서버가 없습니다');
+      assert.deepEqual(await serverNames(), []);
+      await browser('set', 'viewport', '389', '843'); await browser('set', 'viewport', '390', '844');
+      await browser('snapshot', '-i');
+      await browser('screenshot', '/tmp/passport-server-ux-no-access-mobile.png', '--full');
     });
     await t.test('nonmember sees a returned university server and can link Minecraft and school-verified Discord linking is available', async () => {
       reset({ member: false, servers: [universityServer] }); await open(origin); await browser('set', 'viewport', '390', '844');

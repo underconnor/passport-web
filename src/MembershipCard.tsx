@@ -6,7 +6,7 @@ export function MembershipCard({ profile, development }: { profile: Profile; dev
   const access = accountAccess(profile);
   return <section className="panel membership-card" aria-labelledby="membership-heading">
     <div className="membership-main">
-      <span className={`membership-symbol ${access.membershipActive ? "is-member" : ""}`} aria-hidden="true"><Icon name={access.membershipActive ? "check" : "dashboard"} /></span>
+      <span className={`membership-symbol ${access.membershipActive ? "is-member" : ""}`} aria-hidden="true"><Icon name={access.membershipActive ? "check-success" : "dashboard"} /></span>
       <div>
         <h2 id="membership-heading">계정 상태</h2>
         <strong className="membership-label">{development ? `개발용 · ${access.label}` : access.membershipActive ? "Overworld 소모임 회원입니다." : access.label}</strong>
