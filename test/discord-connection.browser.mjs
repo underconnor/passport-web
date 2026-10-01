@@ -174,7 +174,8 @@ test('bot-proven Discord linking and applied role status', { timeout: 300_000 },
     await t.test('school, current membership, accumulated terms and nickname report independent applied states', async () => {
       reset({ authenticated: true, linked: true, active: false, extended: true, roleStatus: 'granted', termStatus: 'granted', nicknameStatus: 'failed' }); await open(origin); await click('Discord 연결'); await browser('set', 'viewport', '1440', '900');
       const rows = await inspect('[...document.querySelectorAll(".discord-role-row")].map(row => row.textContent)');
-      assert.deepEqual(rows, ['학교 인증지급 완료', '현재 Overworld 회원역할 없음', '26-2 참여 학기지급 완료', '27-1 참여 학기지급 완료']);
+      assert.deepEqual(rows, []);
+      assert.equal(await inspect("document.querySelector('.discord-role-summary strong').textContent"), '역할 지급 완료');
       assert.equal(await inspect("document.body.textContent.includes('닉네임 반영 실패')"), true);
       assert.equal(await inspect("document.body.textContent.includes('닉네임 반영 완료')"), false);
       assert.equal(await inspect("document.body.textContent.includes('not_manageable')"), false);

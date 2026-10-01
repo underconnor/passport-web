@@ -82,6 +82,9 @@ test('club membership and school server permissions stay independent', { timeout
       assert.equal(await inspect('document.querySelector(".membership-label").textContent'), '소모임 회원');
       assert.equal(await inspect('document.querySelector(".membership-school strong").textContent'), 'u-SAINT 인증 완료');
       assert.deepEqual(await serverNames(), ['합성 회원 서버']);
+      assert.equal(await inspect('document.querySelector(".minecraft-link-notice strong").textContent'), 'Minecraft 계정이 연결되지 않았어요');
+      assert.equal(await inspect('document.querySelector(".server-connection strong").textContent'), 'overworld.flyjung.kr');
+      assert.equal(await inspect('Boolean(document.querySelector(".minecraft-link-notice").compareDocumentPosition(document.querySelector("#servers-heading")) & Node.DOCUMENT_POSITION_FOLLOWING)'), true);
       assert.equal(await inspect('document.querySelector(".server-list").textContent.includes("허용됨")'), false);
       assert.equal(await inspect("[...document.fonts].some(f => f.family.includes('Pretendard') && f.status === 'loaded')"), true);
       assert.equal(await inspect('getComputedStyle(document.querySelector(".app-sidebar")).width'), '216px');
@@ -99,6 +102,7 @@ test('club membership and school server permissions stay independent', { timeout
       await browser('find', 'role', 'checkbox', 'check', '--name', '개인정보 수집·이용에 동의합니다.');
       await click('동의하고 이 Minecraft 계정 연결');
       await until("document.body.textContent.includes('계정 연결이 완료되었습니다')");
+      assert.equal(await inspect('document.querySelector(".minecraft-link-notice") === null'), true);
       assert.deepEqual(state.confirms, [{ token, consent: { accepted: true, version: privacy.version } }]);
       await open(`${origin}/discord/link/${id}#token=${token}`);
       assert.equal(await inspect('Boolean(document.querySelector(".discord-confirm"))'), true);

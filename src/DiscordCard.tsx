@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { DiscordConnection, DiscordLinkSession, DiscordRoleStatus } from "./api";
-import { discordNicknameState, discordRoleState } from "./discord";
+import { discordNicknameState, discordRoleSummary } from "./discord";
 import { Icon } from "./ui";
 
 export function DiscordTarget({ account }: { account: Pick<DiscordConnection, "username" | "displayName"> }) {
@@ -30,18 +30,21 @@ export function DiscordCard({ connection, link, linkError, missingToken, enabled
   onManagementConsent: () => void;
   onAccount: () => void;
 }) {
-  const role = discordRoleState(connection?.roleStatus);
+  const role = discordRoleSummary(connection);
   const nickname = discordNicknameState(connection?.nickname?.status, connection?.nickname?.desired);
   return <section className="panel" aria-labelledby="discord-heading">
     <div className="panel-head"><h2 id="discord-heading">Discord 계정</h2><span className="status-label">{connection ? "연결됨" : "연결 대기"}</span></div>
     {connection ? <>
       <DiscordTarget account={connection} />
-      {connection.roles ? <div className="discord-role-breakdown" aria-label="Discord 역할 반영 상태">
-        <RoleRow label="학교 인증" state={connection.roles.verification} />
-        <RoleRow label="현재 Overworld 회원" state={connection.roles.member} />
-        {connection.roles.semesters.map(term => <RoleRow key={term.semester} label={`${term.semester} 참여 학기`} state={term} />)}
-        <p className="helper">학교 인증과 현재 회원 역할은 자격에 따라 갱신됩니다. 참여 학기는 별도로 표시합니다.</p>
-      </div> : <div className={`discord-role role-${role.tone}`} role="status"><strong>{role.label}</strong><p>{role.message}</p></div>}
+      <div className={`discord-role discord-role-summary role-${role.tone}`} role="status">
+        {role.tone === "success" ? <span className="role-success-icon"><Icon name="check" /></span> : null}
+        <div><strong>{role.label}</strong>{role.message ? <p>{role.message}</p> : null}</div>
+      </div>
+      {connection.roles && role.tone !== "success" ? <div className="discord-role-breakdown" aria-label="처리 중인 Discord 역할">
+        {connection.roles.verification?.status === "pending" || connection.roles.verification?.status === "failed" ? <RoleRow label="학교 인증" state={connection.roles.verification} /> : null}
+        {connection.roles.member?.status === "pending" || connection.roles.member?.status === "failed" ? <RoleRow label="Overworld 회원" state={connection.roles.member} /> : null}
+        {connection.roles.semesters.filter(term => term.status === "pending" || term.status === "failed").map(term => <RoleRow key={term.semester} label={term.semester} state={term} />)}
+      </div> : null}
       {connection.membershipSemesters?.length ? <div className="discord-semesters"><span>참여 학기</span>{connection.membershipSemesters.map(term => <strong key={term}>{term}</strong>)}</div> : null}
       {connection.managementConsentRequired ? <div className="connection-confirm discord-management-consent">
         <h3>Discord 관리 동의가 필요해요</h3><p className="helper">참여 학기 역할과 실명 기반 서버 닉네임을 반영하려면 새 안내를 확인해 주세요. 기존 계정 연결은 유지됩니다.</p>

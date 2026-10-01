@@ -1,6 +1,6 @@
 import type { PrivacyNotice } from "./api";
 
-export function PrivacyConsent({ notice, accepted, onChange, loading, error, onRetry, disabled = false }: {
+export function PrivacyConsent({ notice, accepted, onChange, loading, error, onRetry, disabled = false, renewal = false }: {
   notice: PrivacyNotice | null;
   accepted: boolean;
   onChange: (accepted: boolean) => void;
@@ -8,6 +8,7 @@ export function PrivacyConsent({ notice, accepted, onChange, loading, error, onR
   error: string;
   onRetry: () => void;
   disabled?: boolean;
+  renewal?: boolean;
 }) {
   if (!notice) return (
     <div className="privacy-unavailable" role="status">
@@ -32,7 +33,7 @@ export function PrivacyConsent({ notice, accepted, onChange, loading, error, onR
         <input type="checkbox" checked={accepted} disabled={disabled || loading} onChange={(event) => onChange(event.target.checked)} />
         <span>개인정보 수집·이용에 동의합니다.</span>
       </label>
-      <p className="privacy-choice">동의하지 않으면 로그인과 계정 연결을 진행하지 않습니다.</p>
+      <p className="privacy-choice">{renewal ? "동의 후 게임 내 실명 표시와 플레이 기록 집계를 이용할 수 있습니다." : "동의하지 않으면 로그인과 계정 연결을 진행하지 않습니다."}</p>
     </div>
   );
 }

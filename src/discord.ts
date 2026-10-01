@@ -50,3 +50,13 @@ export function discordNicknameState(status: NonNullable<DiscordConnection["nick
     default: return { label: "닉네임 상태 확인 대기", tone: "pending" };
   }
 }
+
+export function discordRoleSummary(connection: DiscordConnection | null | undefined) {
+  if (!connection?.roles) return discordRoleState(connection?.roleStatus);
+  const states = [connection.roles.verification, connection.roles.member, ...connection.roles.semesters].filter(Boolean);
+  if (states.some(role => role?.status === "failed")) return discordRoleState("failed");
+  if (states.some(role => role?.status === "pending")) return discordRoleState("pending");
+  if (connection.managementConsentRequired) return { label: "추가 동의 필요", message: "역할과 닉네임을 동기화하려면 아래 안내에 동의해 주세요.", tone: "pending" };
+  if (connection.roles.verification?.status !== "granted") return discordRoleState(connection.roles.verification?.status);
+  return { label: "역할 지급 완료", message: "", tone: "success" };
+}

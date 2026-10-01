@@ -6,6 +6,7 @@ export interface AuthSession {
 }
 export interface Profile {
   id: string;
+  privacyConsent?: { version: string; accepted: boolean } | null;
   displayName: string;
   identityProvider: "development" | "usaint";
   department: string | null;

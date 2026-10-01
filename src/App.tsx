@@ -8,16 +8,19 @@ import { DiscordCard, DiscordTarget } from "./DiscordCard";
 import { pollLink } from "./link-polling";
 import { privacyNotice } from "./privacy";
 import { PrivacyConsent } from "./PrivacyConsent";
+import { StatsView } from "./StatsView";
+import { GameConsentNotice } from "./GameConsentNotice";
 import { MembershipCard } from "./MembershipCard";
 import { MinecraftPortrait } from "./MinecraftPortrait";
 import { AppShell, Brand, DevelopmentStrip, Icon } from "./ui";
 import type { IconName } from "./ui";
-type View = "dashboard" | "minecraft" | "discord" | "servers";
+type View = "dashboard" | "minecraft" | "discord" | "servers" | "stats";
 const navigation: { id: View; label: string; icon: IconName }[] = [
   { id: "dashboard", label: "내 계정", icon: "dashboard" },
   { id: "minecraft", label: "Minecraft 연결", icon: "check" },
   { id: "discord", label: "Discord 연결", icon: "settings" },
   { id: "servers", label: "접속 서버", icon: "book" },
+  { id: "stats", label: "내 플레이 기록", icon: "dashboard" },
 ];
 const automaticMoveNotice = "계정 연결이 완료되었습니다. 게임에 접속 중이면 허용된 로비로 자동 이동합니다.";
 
@@ -33,7 +36,7 @@ const formatDate = (value: string | null) =>
 
 export function App() {
   const [view, setView] = useState<View>(
-    discordLinkReference || invalidDiscordLinkPath ? "discord" : linkReference || invalidLinkPath ? "minecraft" : "dashboard",
+    window.location.pathname === "/me/stats" ? "stats" : discordLinkReference || invalidDiscordLinkPath ? "discord" : linkReference || invalidLinkPath ? "minecraft" : "dashboard",
   );
   const [session, setSession] = useState<AuthSession | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -754,7 +757,10 @@ export function App() {
   />;
 
   const serversCard = (
-    <section className="panel" aria-labelledby="servers-heading">
+    <section className="panel servers-panel" aria-labelledby="servers-heading">
+      {!profile.minecraft ? <div className="minecraft-link-notice" role="status">
+        <Icon name="book" /><div><strong>Minecraft 계정이 연결되지 않았어요</strong><p>게임에서 <b>overworld.flyjung.kr</b>에 접속하고 인증 링크를 열어 주세요.</p></div>
+      </div> : null}
       <div className="panel-head">
         <h2 id="servers-heading">접속 가능한 서버</h2>
         <small>{serversState === "ready" ? `${servers.length}개` : serversState === "loading" ? "확인 중" : "확인 필요"}</small>
@@ -762,15 +768,15 @@ export function App() {
       {serversState !== "ready" ? (
         <div className="empty-state" role="status"><h3>{serversState === "loading" ? "접속 권한을 확인하고 있습니다" : "접속 권한을 확인하지 못했습니다"}</h3>{serversState === "error" ? <p>새로고침하여 현재 접속할 수 있는 서버를 다시 확인해 주세요.</p> : null}</div>
       ) : servers.length ? (
+        <><div className="server-connection"><span>Java Edition 접속 주소</span><strong>overworld.flyjung.kr</strong></div>
         <ul className="server-list">
           {servers.map((server) => (
             <li key={server.id}>
-              <div>
-                <h3>{server.label}</h3>
-              </div>
+              <span className="server-tile-icon"><Icon name="book" /></span>
+              <div><h3>{server.label}</h3><small>Overworld Minecraft</small></div>
             </li>
           ))}
-        </ul>
+        </ul></>
       ) : (
         <div className="empty-state">
           <h3>접속 가능한 서버가 없습니다</h3>
@@ -808,18 +814,22 @@ export function App() {
                 ? "본인 계정을 확인하면 게임 접속을 확인해 자동으로 연결합니다."
                 : view === "discord"
                   ? "연결된 Discord 계정과 역할·닉네임 반영 상태를 확인합니다."
-                  : "현재 접속할 수 있는 서버를 확인합니다."}
+                  : view === "stats" ? "내가 플레이한 서버별 기록과 전체 누적 기록을 확인합니다." : "현재 접속할 수 있는 서버를 확인합니다."}
           </p>
         </div>
-        <button
+        {view !== "stats" ? <button
           disabled={disabled}
           onClick={() => void perform("refresh", refresh)}
         >
           {busy === "refresh" ? "확인 중…" : "새로고침"}
-        </button>
+        </button> : null}
       </div>
       {alerts}
-      {view === "dashboard" ? (
+      {privacy && Object.hasOwn(profile, "privacyConsent") && !profile.privacyConsent?.accepted && link?.status !== "pending" && discordLink?.status !== "pending" ? <GameConsentNotice notice={privacy} busy={disabled} onConfirm={version => void perform("privacy-renewal", async () => {
+        await api("/me/privacy/consent", { method: "POST", body: { consent: { accepted: true, version } }, csrfToken });
+        await refresh(); setNotice("변경된 개인정보 안내에 동의했습니다. 게임 기능이 순서대로 반영됩니다.");
+      })} /> : null}
+      {view === "stats" ? <StatsView endpoint="/me/stats" title="주요 지표" onError={failure => { if (failure instanceof ApiError && failure.status === 401) void perform("stats-session", async () => { throw failure; }); }} /> : view === "dashboard" ? (
         <>
         <MembershipCard profile={profile} development={development} />
         <div className="dashboard-grid">
