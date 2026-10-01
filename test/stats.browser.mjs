@@ -30,6 +30,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/v1/me/stats'&&!state.authenticated)return json(401,{code:'session_required'});
     if(state.statsError)return json(503,{code:'synthetic-sensitive-error'});
     const response={available:state.available,collection:{enabled:state.settings.enabled,consentGranted:state.settings.consentGranted,excludedServerIds:state.excluded?["first"]:[],historyRetained:true},totals:{...totals},servers:[{serverId:'first',label:'합성 건축 서버',collectionEnabled:!state.excluded,...first,onlinePlayerCount:state.online?1:0},{serverId:'second',label:'합성 야생 서버',collectionEnabled:true,...first,onlinePlayerCount:0}],presence:{online:state.online,serverId:state.online?'first':null,serverLabel:state.online?'합성 건축 서버':null,lastSeenAt:new Date().toISOString()},unexpectedPrivateField:'DO-NOT-RENDER-IDENTITY'};
+    if(state.playSeconds !== undefined) for(const counters of [response.totals,...response.servers]) counters.playSeconds=state.playSeconds;
     if(state.legacy) for(const counters of [response.totals,...response.servers]) { delete counters.playerKills; delete counters.distanceCm; }
     if(state.hold){state.hold=false;state.release=()=>json(200,response);return;}
     return json(200,response);
@@ -112,6 +113,8 @@ test('private play statistics with explicit renewed consent',{timeout:240000},as
    assert.deepEqual(await inspect('[...document.querySelectorAll(".stats-metric")].slice(-2).map(el=>el.querySelector("strong").textContent)'),['2','543 m']);
    await browser('set','viewport','390','844');assert.equal(await inspect('document.documentElement.scrollWidth <= innerWidth'),true);await browser('screenshot','/tmp/passport-user-stats-mobile.png','--full');
    state.legacy=true;await click('기록 새로고침');await until('document.querySelector(".stats-metric:last-child strong")?.textContent === "0 m"');assert.deepEqual(await inspect('[...document.querySelectorAll(".stats-metric")].slice(-2).map(el=>el.querySelector("strong").textContent)'),['0','0 m']);
+   state.playSeconds=18;await click('기록 새로고침');await until('document.querySelector(".stats-metric strong")?.textContent === "18초"');
+   state.playSeconds=0;await click('기록 새로고침');await until('document.querySelector(".stats-metric strong")?.textContent === "0분"');
   });
   await t.test('personal collection switch preserves history and enforces revision, CSRF and consent',async()=>{
    reset();await open(origin+'/me/stats');await until('document.querySelector("[role=switch]")?.disabled===false');
