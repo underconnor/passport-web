@@ -12,7 +12,7 @@ const run = promisify(execFile), dist=fileURLToPath(new URL('../dist/',import.me
 const totals={playSeconds:7320,blocksBroken:5210,blocksPlaced:890,damageTakenMilli:125500,deaths:12,mobKills:302};
 const first={playSeconds:3660,blocksBroken:4100,blocksPlaced:450,damageTakenMilli:60500,deaths:8,mobKills:203};
 let state;
-const reset=()=>{state={authenticated:true,accepted:true,available:true,statsError:false,consents:[],reads:[],hold:false,release:null};};
+const reset=()=>{state={authenticated:true,accepted:true,available:true,online:true,statsError:false,consents:[],reads:[],hold:false,release:null};};
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://127.0.0.1');state.reads.push(url.pathname);
   const json=(code,data)=>{res.writeHead(code,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
@@ -25,7 +25,7 @@ const server=http.createServer(async(req,res)=>{
   if(url.pathname==='/v1/me/stats'){
     if(url.pathname==='/v1/me/stats'&&!state.authenticated)return json(401,{code:'session_required'});
     if(state.statsError)return json(503,{code:'synthetic-sensitive-error'});
-    const response={available:state.available,totals,servers:[{serverId:'first',label:'합성 건축 서버',...first},{serverId:'second',label:'합성 야생 서버',...first}],unexpectedPrivateField:'DO-NOT-RENDER-IDENTITY'};
+    const response={available:state.available,totals,servers:[{serverId:'first',label:'합성 건축 서버',...first,onlinePlayerCount:state.online?1:0},{serverId:'second',label:'합성 야생 서버',...first,onlinePlayerCount:0}],presence:{online:state.online,serverId:state.online?'first':null,serverLabel:state.online?'합성 건축 서버':null,lastSeenAt:new Date().toISOString()},unexpectedPrivateField:'DO-NOT-RENDER-IDENTITY'};
     if(state.hold){state.hold=false;state.release=()=>json(200,response);return;}
     return json(200,response);
   }
@@ -44,14 +44,14 @@ test('private play statistics with explicit renewed consent',{timeout:180000},as
  try{
   await t.test('owner sees six metrics and server filters after login',async()=>{
    reset();await open(origin+'/me/stats');await browser('set','viewport','1440','900');
-   assert.equal(await inspect('document.querySelectorAll(".stats-metric").length'),6);assert.equal(state.reads.includes('/v1/me'),true);
+   assert.equal(await inspect('document.querySelectorAll(".stats-metric").length'),6);assert.equal(await inspect('document.querySelector(".stats-presence").textContent.includes("접속 중합성 건축 서버")'),true);assert.equal(state.reads.includes('/v1/me'),true);
    assert.equal(await inspect('document.querySelector(".stats-metric strong").textContent'),'2시간 2분');assert.equal(await inspect('document.body.textContent.includes("DO-NOT-RENDER-IDENTITY")'),false);
    await browser('screenshot','/tmp/passport-user-stats-desktop.png');await browser('select','.stats-scope select','first');assert.equal(await inspect('document.querySelector(".stats-metric strong").textContent'),'1시간 1분');
    await browser('set','viewport','390','844');assert.equal(await inspect('document.documentElement.scrollWidth <= innerWidth'),true);await browser('screenshot','/tmp/passport-user-stats-mobile.png');
   });
   await t.test('personal deep link loads only owner endpoint and failed refresh removes old metrics',async()=>{
    reset();await open(origin+'/me/stats');assert.equal(state.reads.includes('/v1/me/stats'),true);assert.equal(state.reads.includes('/v1/public/stats'),false);
-   await until('document.querySelectorAll(".stats-metric").length === 6');state.statsError=true;await click('기록 새로고침');await until('document.querySelectorAll(".stats-metric").length === 0');
+   await until('document.querySelectorAll(".stats-metric").length === 6');state.online=false;await click('기록 새로고침');await until('document.querySelector(".stats-presence strong").textContent === "오프라인"');state.statsError=true;await click('기록 새로고침');await until('document.querySelectorAll(".stats-metric").length === 0');
    assert.equal(await inspect('document.body.textContent.includes("synthetic-sensitive-error")'),false);state.statsError=false;state.available=false;await click('기록 새로고침');await until('document.body.textContent.includes("플레이 기록 집계를 준비하고 있어요")');
   });
   await t.test('renewed consent starts unchecked and submits actual current notice with CSRF',async()=>{
