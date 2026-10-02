@@ -116,18 +116,13 @@ test('private play statistics with explicit renewed consent',{timeout:240000},as
    state.playSeconds=18;await click('기록 새로고침');await until('document.querySelector(".stats-metric strong")?.textContent === "18초"');
    state.playSeconds=0;await click('기록 새로고침');await until('document.querySelector(".stats-metric strong")?.textContent === "0분"');
   });
-  await t.test('personal collection switch preserves history and enforces revision, CSRF and consent',async()=>{
-   reset();await open(origin+'/me/stats');await until('document.querySelector("[role=switch]")?.disabled===false');
-   const before=await inspect('[...document.querySelectorAll(".stats-metric strong")].map(el=>el.textContent)');await browser('click','[role=switch]');await until('document.querySelector("[role=switch]")?.getAttribute("aria-checked")==="false"');await until('document.querySelectorAll(".stats-metric").length===8');
-   assert.deepEqual(state.settingWrites[0],{input:{enabled:false,expectedRevision:'1'},csrf:'synthetic-csrf'});assert.deepEqual(await inspect('[...document.querySelectorAll(".stats-metric strong")].map(el=>el.textContent)'),before);
-   state.settingsError='statistics_settings_changed';await browser('click','[role=switch]');await until('document.body.textContent.includes("다른 곳에서 수집 설정이 변경되었습니다")');assert.equal(await inspect('document.querySelector("[role=switch]").disabled'),true);
-   state.settingsError=null;state.settings={...state.settings,enabled:true,revision:'3'};await click('최신 설정 확인');await until('document.querySelector("[role=switch]")?.disabled===false');assert.equal(await inspect('document.querySelector("[role=switch]").getAttribute("aria-checked")'),'true');
-   reset();state.settings={enabled:false,revision:'4',consentGranted:false};await open(origin+'/me/stats');await until('Boolean(document.querySelector("[role=switch]"))');assert.equal(await inspect('document.querySelector("[role=switch]").disabled'),true);assert.equal(state.settingWrites.length,0);
+  await t.test('personal collection and reset controls are absent and disabled servers never enter the dropdown',async()=>{
+   reset();state.excluded=true;await open(origin+'/me/stats');await until('document.querySelectorAll(".stats-metric").length===8');
+   assert.equal(await inspect('document.querySelector("[role=switch]")===null'),true);
+   assert.equal(state.reads.includes('/v1/me/statistics-settings'),false);
+   assert.deepEqual(await inspect('[...document.querySelector(".stats-scope select").options].map(option=>option.value)'),['','second']);
    assert.equal(await inspect('[...document.querySelectorAll("button")].some(button=>button.textContent.includes("초기화"))'),false);
-  });
-  await t.test('excluded server never shows zero metrics as collected history and user ON cannot override it',async()=>{
-   reset();state.excluded=true;await open(origin+'/me/stats');await until('document.querySelectorAll(".stats-metric").length===8');assert.equal(await inspect('document.querySelector("[role=switch]").getAttribute("aria-checked")'),'true');
-   assert.equal(await inspect('document.querySelector(".stats-scope-note").textContent.includes("전체 합계에서 제외")'),true);await browser('select','.stats-scope select','first');assert.equal(await inspect('document.querySelectorAll(".stats-metric").length'),0);assert.equal(await inspect('document.querySelector(".stats-disabled").textContent.includes("기존 기록은 보관")'),true);
+   assert.equal(await inspect('document.body.textContent.includes("AFK")'),false);
    await browser('set','viewport','390','844');assert.equal(await inspect('document.documentElement.scrollWidth<=innerWidth'),true);await browser('screenshot','/tmp/passport-stats-disabled-mobile.png','--full');await browser('select','.stats-scope select','second');assert.equal(await inspect('document.querySelectorAll(".stats-metric").length'),8);assert.equal(state.settingWrites.length,0);
   });
   await t.test('personal deep link loads only owner endpoint and failed refresh removes old metrics',async()=>{

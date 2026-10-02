@@ -23,6 +23,6 @@ export function AccountStats({ onDetails, onError }: { onDetails: () => void; on
     {loading ? <p className="account-stats-empty" role="status">기록을 불러오는 중입니다.</p>
       : error ? <p className="account-stats-empty" role="status">{error}</p>
       : !data?.available ? <p className="account-stats-empty">아직 플레이 기록이 없습니다.</p>
-      : <><div className="account-stats-grid">{metrics.map(metric => <div className="account-stat" key={metric.label}><span className="stats-metric-label"><MetricIcon name={metric.icon} />{metric.label}</span><strong>{metric.value}</strong></div>)}</div>{data.collection?.enabled === false ? <p className="account-stats-note">내 통계 수집이 꺼져 있습니다. 기존 기록만 표시합니다.</p> : null}</>}
+      : <><div className="account-stats-grid">{metrics.map(metric => <div className="account-stat" key={metric.label}><span className="stats-metric-label"><MetricIcon name={metric.icon} />{metric.label}</span><strong>{metric.value}</strong></div>)}</div></>}
   </section>;
 }

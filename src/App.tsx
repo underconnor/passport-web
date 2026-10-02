@@ -8,6 +8,7 @@ import { DiscordCard, DiscordTarget } from "./DiscordCard";
 import { pollLink } from "./link-polling";
 import { privacyNotice } from "./privacy";
 import { PrivacyConsent } from "./PrivacyConsent";
+import { ManualView } from "./ManualView";
 import { StatsView } from "./StatsView";
 import { AccountStats } from "./AccountStats";
 import { ServerAddress } from "./ServerAddress";
@@ -17,8 +18,9 @@ import { MembershipCard } from "./MembershipCard";
 import { MinecraftPortrait } from "./MinecraftPortrait";
 import { AppShell, Brand, DevelopmentStrip, Icon } from "./ui";
 import type { IconName } from "./ui";
-type View = "dashboard" | "minecraft" | "discord" | "servers" | "stats";
+type View = "dashboard" | "minecraft" | "discord" | "servers" | "stats" | "manual";
 const navigation: { id: View; label: string; icon: IconName }[] = [
+  { id: "manual", label: "매뉴얼", icon: "book" },
   { id: "dashboard", label: "내 계정", icon: "dashboard" },
   { id: "minecraft", label: "Minecraft 연결", icon: "check" },
   { id: "discord", label: "Discord 연결", icon: "settings" },
@@ -28,7 +30,7 @@ const navigation: { id: View; label: string; icon: IconName }[] = [
 
 export function App() {
   const [view, setView] = useState<View>(
-    window.location.pathname === "/me/stats" ? "stats" : discordLinkReference || invalidDiscordLinkPath ? "discord" : linkReference || invalidLinkPath ? "minecraft" : "dashboard",
+    window.location.pathname === "/manual" ? "manual" : window.location.pathname === "/me/stats" ? "stats" : discordLinkReference || invalidDiscordLinkPath ? "discord" : linkReference || invalidLinkPath ? "minecraft" : "dashboard",
   );
   const [session, setSession] = useState<AuthSession | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -440,13 +442,14 @@ export function App() {
       setNotice("로그아웃했습니다.");
     });
 
+  if (!signedIn && view === "manual") return <><header className="guest-manual-header"><Brand /><nav aria-label="서비스 메뉴"><a href="/">Passport</a><a href="/manual" aria-current="page">매뉴얼</a></nav></header><main className="guest-manual"><h1>매뉴얼</h1><ManualView /></main></>;
   if (!signedIn)
     return (
       <>
         <DevelopmentStrip development={development} />
         <main className="login-shell">
           <section className="login-card" aria-busy={loading}>
-            <Brand large />
+            <div className="login-brand-row"><Brand large /><a href="/manual">매뉴얼</a></div>
             <h1>{targetDiscordId ? "내 Discord 계정 연결" : targetLinkId ? "내 Minecraft 계정 연결" : "Overworld에 오신 것을 환영해요"}</h1>
             <p className="login-description">
               {targetLinkId || targetDiscordId ? "아래 계정이 본인 계정인지 확인해 주세요." : "학교 계정으로 로그인하고"}
@@ -774,7 +777,7 @@ export function App() {
       title={currentNavigation.label}
       navItems={navigation}
       activeView={view}
-      onNavigate={(id) => setView(id as View)}
+      onNavigate={(id) => { setView(id as View); if (!hasLink && !hasDiscordLink) window.history.replaceState(null, "", id === "manual" ? "/manual" : id === "stats" ? "/me/stats" : "/"); }}
       displayName={profile.displayName}
       description={access?.label ?? "회원 확인 대기"}
       development={development}
@@ -784,7 +787,7 @@ export function App() {
       <div className="page-head">
         <div>
           <h1>{currentNavigation.label}</h1>
-          {view !== "minecraft" ? <p>
+          {view !== "minecraft" && view !== "manual" ? <p>
             {view === "dashboard"
               ? `${profile.displayName}님의 계정과 접속 권한을 확인하세요.`
               : view === "discord"
@@ -792,7 +795,7 @@ export function App() {
                   : view === "stats" ? "내가 플레이한 서버별 기록과 전체 누적 기록을 확인합니다." : "현재 접속할 수 있는 서버를 확인합니다."}
           </p> : null}
         </div>
-        {view !== "stats" ? <button
+        {view !== "stats" && view !== "manual" ? <button
           disabled={disabled}
           onClick={() => void perform("refresh", refresh)}
         >
@@ -804,7 +807,7 @@ export function App() {
         await api("/me/privacy/consent", { method: "POST", body: { consent: { accepted: true, version } }, csrfToken });
         await refresh(); setNotice("변경된 개인정보 안내에 동의했습니다. 게임 기능이 순서대로 반영됩니다.");
       })} /> : null}
-      {view === "stats" ? <StatsView csrfToken={csrfToken} endpoint="/me/stats" title="주요 지표" onError={failure => { if (failure instanceof ApiError && failure.status === 401) void perform("stats-session", async () => { throw failure; }); }} /> : view === "dashboard" ? (
+      {view === "manual" ? <ManualView /> : view === "stats" ? <StatsView endpoint="/me/stats" title="주요 지표" onError={failure => { if (failure instanceof ApiError && failure.status === 401) void perform("stats-session", async () => { throw failure; }); }} /> : view === "dashboard" ? (
         <>
         <MembershipCard profile={profile} development={development} />
         <div className="dashboard-grid">

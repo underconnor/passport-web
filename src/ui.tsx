@@ -88,7 +88,7 @@ export function AppShell({
             <p>Overworld {onLogout ? "회원 공간" : "운영 공간"}</p>
           </div>
           <nav aria-label="주 메뉴">
-            {navItems.map((item) => (
+            {navItems.filter(item => item.id !== "manual").map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -110,7 +110,7 @@ export function AppShell({
         </aside>
         <div className="app-body">
           <header className="topbar">
-            <span>{title}</span>
+            <nav className="portal-tabs" aria-label="서비스 메뉴"><button aria-current={activeView !== "manual" ? "page" : undefined} onClick={() => onNavigate("dashboard")}>Passport</button><button aria-current={activeView === "manual" ? "page" : undefined} onClick={() => onNavigate("manual")}>매뉴얼</button><span className="sr-only">{title}</span></nav>
             <div className="topbar-right">
               <span className="topbar-context">
                 {onLogout ? "Overworld 회원 포털" : "관리자 전용"}
