@@ -63,6 +63,7 @@ export function AppShell({
   displayName,
   description,
   development,
+  publicView = false,
   onLogout,
   busy,
   children,
@@ -74,6 +75,7 @@ export function AppShell({
   displayName: string;
   description: string;
   development: boolean;
+  publicView?: boolean;
   onLogout?: () => void;
   busy?: boolean;
   children: ReactNode;
@@ -85,10 +87,10 @@ export function AppShell({
         <aside className="app-sidebar">
           <div className="sidebar-brand">
             <Brand />
-            <p>Overworld {onLogout ? "회원 공간" : "운영 공간"}</p>
+            <p>Overworld {publicView ? "이용 안내" : onLogout ? "회원 공간" : "운영 공간"}</p>
           </div>
           <nav aria-label="주 메뉴">
-            {navItems.filter(item => item.id !== "manual").map((item) => (
+            {navItems.map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -100,18 +102,18 @@ export function AppShell({
               </button>
             ))}
           </nav>
-          <div className="sidebar-profile">
+          {!publicView ? <div className="sidebar-profile">
             <span className="avatar">{displayName.slice(0, 1)}</span>
             <div className="profile-label">
               <strong>{displayName}</strong>
               <small>{description}</small>
             </div>
-          </div>
+          </div> : null}
         </aside>
         <div className="app-body">
           <header className="topbar">
-            <nav className="portal-tabs" aria-label="서비스 메뉴"><button aria-current={activeView !== "manual" ? "page" : undefined} onClick={() => onNavigate("dashboard")}>Passport</button><button aria-current={activeView === "manual" ? "page" : undefined} onClick={() => onNavigate("manual")}>매뉴얼</button><span className="sr-only">{title}</span></nav>
-            <div className="topbar-right">
+            <span>{title}</span>
+            {publicView ? <a href="/">로그인</a> : <div className="topbar-right">
               <span className="topbar-context">
                 {onLogout ? "Overworld 회원 포털" : "관리자 전용"}
               </span>
@@ -126,7 +128,7 @@ export function AppShell({
                   로그아웃
                 </button>
               ) : null}
-            </div>
+            </div>}
           </header>
           <main id="main-content">{children}</main>
         </div>

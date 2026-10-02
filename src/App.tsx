@@ -20,12 +20,12 @@ import { AppShell, Brand, DevelopmentStrip, Icon } from "./ui";
 import type { IconName } from "./ui";
 type View = "dashboard" | "minecraft" | "discord" | "servers" | "stats" | "manual";
 const navigation: { id: View; label: string; icon: IconName }[] = [
-  { id: "manual", label: "매뉴얼", icon: "book" },
   { id: "dashboard", label: "내 계정", icon: "dashboard" },
   { id: "minecraft", label: "Minecraft 연결", icon: "check" },
   { id: "discord", label: "Discord 연결", icon: "settings" },
   { id: "servers", label: "접속 서버", icon: "book" },
   { id: "stats", label: "내 플레이 기록", icon: "dashboard" },
+  { id: "manual", label: "매뉴얼", icon: "book" },
 ];
 
 export function App() {
@@ -442,7 +442,21 @@ export function App() {
       setNotice("로그아웃했습니다.");
     });
 
-  if (!signedIn && view === "manual") return <><header className="guest-manual-header"><Brand /><nav aria-label="서비스 메뉴"><a href="/">Passport</a><a href="/manual" aria-current="page">매뉴얼</a></nav></header><main className="guest-manual"><h1>매뉴얼</h1><ManualView /></main></>;
+  if (!signedIn && view === "manual") return (
+    <AppShell
+      title="매뉴얼"
+      navItems={navigation.filter(item => item.id === "manual")}
+      activeView="manual"
+      onNavigate={() => setView("manual")}
+      displayName=""
+      description=""
+      development={development}
+      publicView
+    >
+      <div className="page-head"><h1>매뉴얼</h1></div>
+      <ManualView />
+    </AppShell>
+  );
   if (!signedIn)
     return (
       <>
